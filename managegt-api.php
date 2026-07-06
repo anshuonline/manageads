@@ -106,6 +106,36 @@ if ($action === 'save_playlists' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+// ── Header ────────────────────────────────────────────────────────────────────
+
+$header_file = "custom-header.json";
+
+if ($action === 'get_header') {
+    if (file_exists($header_file)) {
+        echo file_get_contents($header_file);
+    } else {
+        echo json_encode(new stdClass());
+    }
+    exit();
+}
+
+if ($action === 'save_header' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['headerData'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid payload — missing headerData"]);
+        exit();
+    }
+    $success = file_put_contents($header_file, json_encode($data['headerData'], JSON_PRETTY_PRINT));
+    if ($success !== false) {
+        echo json_encode(["status" => "success", "message" => "Header saved successfully!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to write header file."]);
+    }
+    exit();
+}
+
 http_response_code(404);
 echo json_encode(["status" => "error", "message" => "Action not found"]);
 ?>
+
