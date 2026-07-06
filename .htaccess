@@ -1,0 +1,6 @@
+<IfModule mod_headers.c>
+    # Allow cross-origin requests from ganatube.in
+    Header set Access-Control-Allow-Origin "https://ganatube.in"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
