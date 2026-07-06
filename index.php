@@ -14,7 +14,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $result = $conn->query("SELECT password_hash FROM admin_settings WHERE id = 1");
         if ($result && $result->num_rows > 0) {
             $row = $result->fetch_assoc();
-            if (password_verify($password, $row['password_hash'])) {
+            if (md5($password) === $row['password_hash']) {
                 $_SESSION['admin_logged_in'] = true;
                 header("Location: dashboard.php");
                 exit;
