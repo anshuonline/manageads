@@ -149,31 +149,73 @@ if ($action === 'upload_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         mkdir($upload_dir, 0777, true);
     }
 
-    $file_info = pathinfo($_FILES['image']['name']);
-    $ext = strtolower($file_info['extension'] ?? '');
-    
-    // Validate extension
-    $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
-    if (!in_array($ext, $allowed)) {
+    $tmp_name = $_FILES['image']['tmp_name'];
+    $file_info = getimagesize($tmp_name);
+    if (!$file_info) {
         http_response_code(400);
-        echo json_encode(["status" => "error", "message" => "Invalid file type. Only JPG, PNG, GIF, WEBP, SVG allowed."]);
+        echo json_encode(["status" => "error", "message" => "Invalid image file."]);
         exit();
     }
 
-    // Generate unique filename
-    $new_filename = uniqid('img_') . '.' . $ext;
-    $target_path = $upload_dir . $new_filename;
+    $mime = $file_info['mime'];
+    $width = $file_info[0];
+    $height = $file_info[1];
 
-    if (move_uploaded_file($_FILES['image']['tmp_name'], $target_path)) {
-        // Return absolute URL assuming manageads.ganatube.in
-        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://';
-        $host = $_SERVER['HTTP_HOST'];
-        $url = $protocol . $host . '/uploads/' . $new_filename;
-        echo json_encode(["status" => "success", "imageUrl" => $url]);
-    } else {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to move uploaded file"]);
+    // Create GD resource
+    $image = null;
+    switch ($mime) {
+        case 'image/jpeg': $image = imagecreatefromjpeg($tmp_name); break;
+        case 'image/png':  $image = imagecreatefrompng($tmp_name); break;
+        case 'image/webp': $image = imagecreatefromwebp($tmp_name); break;
+        case 'image/gif':  $image = imagecreatefromgif($tmp_name); break;
     }
+
+    if (!$image) {
+        // If not a supported type or SVG (which can't be processed by GD easily)
+        // Just move the file directly without optimization
+        $ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+        $new_filename = uniqid('img_') . '.' . $ext;
+        $target_path = $upload_dir . $new_filename;
+        move_uploaded_file($tmp_name, $target_path);
+    } else {
+        // Optimization: Resize if width > 1200
+        $max_width = 1200;
+        if ($width > $max_width) {
+            $ratio = $max_width / $width;
+            $new_width = $max_width;
+            $new_height = intval($height * $ratio);
+
+            $new_image = imagecreatetruecolor($new_width, $new_height);
+            // Handle transparency
+            imagealphablending($new_image, false);
+            imagesavealpha($new_image, true);
+            $transparent = imagecolorallocatealpha($new_image, 255, 255, 255, 127);
+            imagefilledrectangle($new_image, 0, 0, $new_width, $new_height, $transparent);
+
+            imagecopyresampled($new_image, $image, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+            imagedestroy($image);
+            $image = $new_image;
+        } else {
+            // Even if not resized, handle transparency for conversion
+            imagealphablending($image, false);
+            imagesavealpha($image, true);
+        }
+
+        // Always save as WebP for best compression
+        $new_filename = uniqid('img_opt_') . '.webp';
+        $target_path = $upload_dir . $new_filename;
+        
+        // 80 is the quality out of 100
+        imagewebp($image, $target_path, 80);
+        imagedestroy($image);
+    }
+
+    // Return absolute URL assuming manageads.ganatube.in
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'];
+    $url = $protocol . $host . '/uploads/' . $new_filename;
+    
+    echo json_encode(["status" => "success", "imageUrl" => $url]);
     exit();
 }
 
