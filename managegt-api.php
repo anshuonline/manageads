@@ -135,7 +135,48 @@ if ($action === 'save_header' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+// ── Image Upload ──────────────────────────────────────────────────────────────
+
+if ($action === 'upload_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "No image uploaded or upload error"]);
+        exit();
+    }
+
+    $upload_dir = __DIR__ . '/uploads/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
+    }
+
+    $file_info = pathinfo($_FILES['image']['name']);
+    $ext = strtolower($file_info['extension'] ?? '');
+    
+    // Validate extension
+    $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+    if (!in_array($ext, $allowed)) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid file type. Only JPG, PNG, GIF, WEBP, SVG allowed."]);
+        exit();
+    }
+
+    // Generate unique filename
+    $new_filename = uniqid('img_') . '.' . $ext;
+    $target_path = $upload_dir . $new_filename;
+
+    if (move_uploaded_file($_FILES['image']['tmp_name'], $target_path)) {
+        // Return absolute URL assuming manageads.ganatube.in
+        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://';
+        $host = $_SERVER['HTTP_HOST'];
+        $url = $protocol . $host . '/uploads/' . $new_filename;
+        echo json_encode(["status" => "success", "imageUrl" => $url]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to move uploaded file"]);
+    }
+    exit();
+}
+
 http_response_code(404);
 echo json_encode(["status" => "error", "message" => "Action not found"]);
 ?>
-
