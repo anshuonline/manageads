@@ -1,1 +1,10 @@
 config.php
+
+# Ignore JSON data files to prevent overwriting production data
+custom-sections.json
+custom-playlists.json
+custom-header.json
+curated-songs.json
+
+# Ignore uploads
+uploads/
