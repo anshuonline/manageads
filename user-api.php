@@ -70,6 +70,25 @@ elseif ($action === 'updateProfile') {
         echo json_encode(["status" => "error", "message" => "Error updating profile: " . $conn->error]);
     }
 } 
+elseif ($action === 'getAllUsers') {
+    $sql = "SELECT email, preferred_languages, liked_songs, listening_preferences, created_at, updated_at FROM user_profiles ORDER BY created_at DESC";
+    $result = $conn->query($sql);
+    $users = [];
+
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $row['preferred_languages'] = json_decode($row['preferred_languages']);
+            $row['liked_songs'] = json_decode($row['liked_songs']);
+            $row['listening_preferences'] = json_decode($row['listening_preferences']);
+            $users[] = $row;
+        }
+    }
+    
+    echo json_encode([
+        "status" => "success",
+        "data" => $users
+    ]);
+}
 else {
     echo json_encode(["status" => "error", "message" => "Invalid action"]);
 }
