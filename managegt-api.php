@@ -9,30 +9,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// DB credentials & $conn are provided by config.php
-require_once 'config.php';
-
-
-// Create admins table if not exists
-$table_sql = "CREATE TABLE IF NOT EXISTS admins (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL
-)";
-$conn->query($table_sql);
-
-// Check if default admin exists, if not create one
-$result = $conn->query("SELECT * FROM admins WHERE username = 'admin'");
-if ($result->num_rows === 0) {
-    $hashed = md5('admin123');
-    $conn->query("INSERT INTO admins (username, password) VALUES ('admin', '$hashed')");
-}
 
 $action = $_GET['action'] ?? '';
 $json_input = file_get_contents('php://input');
 $data = json_decode($json_input, true) ?: [];
 
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_once 'config.php';
+    
+    // Create admins table if not exists
+    $table_sql = "CREATE TABLE IF NOT EXISTS admins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(50) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL
+    )";
+    $conn->query($table_sql);
+
+    // Check if default admin exists, if not create one
+    $result = $conn->query("SELECT * FROM admins WHERE username = 'admin'");
+    if ($result->num_rows === 0) {
+        $hashed = md5('admin123');
+        $conn->query("INSERT INTO admins (username, password) VALUES ('admin', '$hashed')");
+    }
+
     $username = $conn->real_escape_string($data['username'] ?? '');
     $password = $data['password'] ?? '';
     
