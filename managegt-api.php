@@ -14,8 +14,9 @@ $action = $_GET['action'] ?? '';
 $json_input = file_get_contents('php://input');
 $data = json_decode($json_input, true) ?: [];
 
+require_once 'config.php';
+
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_once 'config.php';
     
     // Create admins table if not exists
     $table_sql = "CREATE TABLE IF NOT EXISTS admins (
@@ -48,14 +49,13 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
-$sections_file = "custom-sections.json";
-$playlists_file = "custom-playlists.json";
-
 // ── Sections ────────────────────────────────────────────────────────────────
 
 if ($action === 'get_sections') {
-    if (file_exists($sections_file)) {
-        echo file_get_contents($sections_file);
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'];
     } else {
         echo json_encode(new stdClass());
     }
@@ -68,12 +68,14 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(["status" => "error", "message" => "Invalid payload"]);
         exit();
     }
-    $success = file_put_contents($sections_file, json_encode($data['sectionsData'], JSON_PRETTY_PRINT));
-    if ($success !== false) {
+    $json_data = $conn->real_escape_string(json_encode($data['sectionsData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_sections', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Sections updated successfully!"]);
     } else {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to write sections file."]);
+        echo json_encode(["status" => "error", "message" => "Failed to write sections to database."]);
     }
     exit();
 }
@@ -81,8 +83,10 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Playlists ────────────────────────────────────────────────────────────────
 
 if ($action === 'get_playlists') {
-    if (file_exists($playlists_file)) {
-        echo file_get_contents($playlists_file);
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_playlists'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'];
     } else {
         echo json_encode(new stdClass());
     }
@@ -95,23 +99,25 @@ if ($action === 'save_playlists' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing playlistsData"]);
         exit();
     }
-    $success = file_put_contents($playlists_file, json_encode($data['playlistsData'], JSON_PRETTY_PRINT));
-    if ($success !== false) {
+    $json_data = $conn->real_escape_string(json_encode($data['playlistsData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_playlists', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Playlists saved successfully!"]);
     } else {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to write playlists file."]);
+        echo json_encode(["status" => "error", "message" => "Failed to write playlists to database."]);
     }
     exit();
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-$header_file = "custom-header.json";
-
 if ($action === 'get_header') {
-    if (file_exists($header_file)) {
-        echo file_get_contents($header_file);
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_header'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'];
     } else {
         echo json_encode(new stdClass());
     }
@@ -124,12 +130,14 @@ if ($action === 'save_header' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing headerData"]);
         exit();
     }
-    $success = file_put_contents($header_file, json_encode($data['headerData'], JSON_PRETTY_PRINT));
-    if ($success !== false) {
+    $json_data = $conn->real_escape_string(json_encode($data['headerData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_header', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Header saved successfully!"]);
     } else {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to write header file."]);
+        echo json_encode(["status" => "error", "message" => "Failed to write header to database."]);
     }
     exit();
 }

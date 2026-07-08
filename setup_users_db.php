@@ -20,5 +20,17 @@ if ($conn->query($sql) === TRUE) {
 } else {
     echo "Error creating table: " . $conn->error . "\n";
 }
+
+$settings_sql = "CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key VARCHAR(50) PRIMARY KEY,
+    setting_value LONGTEXT
+)";
+
+if ($conn->query($settings_sql) === TRUE) {
+    echo "Table app_settings created successfully or already exists.\n";
+} else {
+    echo "Error creating table: " . $conn->error . "\n";
+}
+
 $conn->close();
 ?>
