@@ -63,6 +63,42 @@ if ($action === 'getPlaylists') {
         "data" => $playlists
     ]);
 } 
+elseif ($action === 'getPublicPlaylist') {
+    $playlist_id = isset($_GET['playlist_id']) ? $conn->real_escape_string($_GET['playlist_id']) : '';
+    $email = isset($_GET['email']) ? $conn->real_escape_string($_GET['email']) : '';
+    
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
+        exit;
+    }
+
+    $sql = "SELECT playlist_id, email, playlist_name, is_public, songs, created_at, updated_at FROM user_playlists WHERE playlist_id = '$playlist_id'";
+    $result = $conn->query($sql);
+
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        
+        // Allow access if public OR if the requester is the owner
+        if ((bool)$row['is_public'] || $row['email'] === $email) {
+            echo json_encode([
+                "status" => "success",
+                "data" => [
+                    "playlist_id" => $row['playlist_id'],
+                    "playlist_name" => $row['playlist_name'],
+                    "is_public" => (bool)$row['is_public'],
+                    "songs" => json_decode($row['songs']),
+                    "owner" => strstr($row['email'], '@', true), // Send username part
+                    "created_at" => $row['created_at'],
+                    "updated_at" => $row['updated_at']
+                ]
+            ]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "This playlist is private"]);
+        }
+    } else {
+        echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+    }
+}
 elseif ($action === 'createPlaylist') {
     $data = json_decode(file_get_contents("php://input"), true);
     
