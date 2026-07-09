@@ -74,6 +74,25 @@ elseif ($action === 'updateProfile') {
         echo json_encode(["status" => "error", "message" => "Error updating profile: " . $conn->error]);
     }
 } 
+elseif ($action === 'updateUsername') {
+    $data = json_decode(file_get_contents("php://input"), true);
+    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $display_name = isset($data['display_name']) ? $conn->real_escape_string($data['display_name']) : '';
+    
+    if (empty($email) || empty($display_name)) {
+        echo json_encode(["status" => "error", "message" => "Email and display_name are required"]);
+        exit;
+    }
+
+    $sql = "INSERT INTO user_profiles (email, display_name) VALUES ('$email', '$display_name')
+            ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)";
+
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Username updated in DB"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Error updating username: " . $conn->error]);
+    }
+}
 elseif ($action === 'getAllUsers') {
     $sql = "SELECT email, preferred_languages, liked_songs, recent_plays, listening_preferences, created_at, updated_at FROM user_profiles ORDER BY created_at DESC";
     $result = $conn->query($sql);
