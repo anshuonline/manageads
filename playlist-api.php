@@ -87,7 +87,7 @@ elseif ($action === 'getPublicPlaylist') {
                     "playlist_name" => $row['playlist_name'],
                     "is_public" => (bool)$row['is_public'],
                     "songs" => json_decode($row['songs']),
-                    "owner" => strstr($row['email'], '@', true), // Send username part
+                    "owner" => $row['playlist_id'], // Show ID instead of username
                     "created_at" => $row['created_at'],
                     "updated_at" => $row['updated_at']
                 ]
@@ -123,7 +123,7 @@ elseif ($action === 'getAllPublicPlaylists') {
                 "playlist_name" => $row['playlist_name'],
                 "is_public" => (bool)$row['is_public'],
                 "songs" => json_decode($row['songs']),
-                "owner" => strstr($row['email'], '@', true),
+                "owner" => $row['playlist_id'],
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
             ];
