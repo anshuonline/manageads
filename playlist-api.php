@@ -99,6 +99,42 @@ elseif ($action === 'getPublicPlaylist') {
         echo json_encode(["status" => "error", "message" => "Playlist not found"]);
     }
 }
+elseif ($action === 'getAllPublicPlaylists') {
+    // Optional: filter by search query
+    $query = isset($_GET['q']) ? $conn->real_escape_string($_GET['q']) : '';
+    
+    $sql = "SELECT playlist_id, email, playlist_name, is_public, songs, created_at, updated_at 
+            FROM user_playlists 
+            WHERE is_public = 1";
+            
+    if (!empty($query)) {
+        $sql .= " AND playlist_name LIKE '%$query%'";
+    }
+    
+    $sql .= " ORDER BY created_at DESC LIMIT 50";
+    
+    $result = $conn->query($sql);
+    
+    $playlists = [];
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $playlists[] = [
+                "playlist_id" => $row['playlist_id'],
+                "playlist_name" => $row['playlist_name'],
+                "is_public" => (bool)$row['is_public'],
+                "songs" => json_decode($row['songs']),
+                "owner" => strstr($row['email'], '@', true),
+                "created_at" => $row['created_at'],
+                "updated_at" => $row['updated_at']
+            ];
+        }
+    }
+    
+    echo json_encode([
+        "status" => "success",
+        "data" => $playlists
+    ]);
+}
 elseif ($action === 'createPlaylist') {
     $data = json_decode(file_get_contents("php://input"), true);
     
