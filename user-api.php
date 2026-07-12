@@ -89,13 +89,15 @@ elseif ($action === 'updateUsername') {
     $sql = "INSERT INTO user_profiles (email, display_name) VALUES ('$email', '$display_name')
             ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)";
 
-    if ($conn->query($sql) === TRUE) {
-        echo json_encode(["status" => "success", "message" => "Username updated in DB"]);
-    } else {
-        if ($conn->errno == 1062) {
+    try {
+        if ($conn->query($sql) === TRUE) {
+            echo json_encode(["status" => "success", "message" => "Username updated in DB"]);
+        }
+    } catch (Exception $e) {
+        if ($conn->errno == 1062 || (strpos($e->getMessage(), 'Duplicate entry') !== false)) {
             echo json_encode(["status" => "error", "message" => "Username is already taken by another user."]);
         } else {
-            echo json_encode(["status" => "error", "message" => "Error updating username: " . $conn->error]);
+            echo json_encode(["status" => "error", "message" => "Error updating username: " . $e->getMessage()]);
         }
     }
 }
