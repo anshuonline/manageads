@@ -41,7 +41,17 @@ if ($action === 'getPlaylists') {
         exit;
     }
 
-    $sql = "SELECT playlist_id, playlist_name, is_public, songs, created_at, updated_at FROM user_playlists WHERE email = '$email' ORDER BY created_at DESC";
+    $sql = "
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner 
+        FROM user_playlists p 
+        WHERE p.email = '$email'
+        UNION
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, s.saved_at as created_at, p.updated_at, 0 as is_owner 
+        FROM saved_playlists s
+        JOIN user_playlists p ON s.playlist_id = p.playlist_id
+        WHERE s.email = '$email'
+        ORDER BY created_at DESC
+    ";
     $result = $conn->query($sql);
 
     $playlists = [];
@@ -52,6 +62,7 @@ if ($action === 'getPlaylists') {
                 "playlist_name" => $row['playlist_name'],
                 "is_public" => (bool)$row['is_public'],
                 "songs" => json_decode($row['songs']),
+                "is_owner" => (bool)$row['is_owner'],
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
             ];
@@ -275,6 +286,48 @@ elseif ($action === 'getPublicPlaylists') {
         "status" => "success",
         "data" => $playlists
     ]);
+}
+elseif ($action === 'savePlaylist') {
+    $data = json_decode(file_get_contents("php://input"), true);
+    
+    $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
+    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    
+    if (empty($playlist_id) || empty($email)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+        exit;
+    }
+
+    $sql = "INSERT INTO saved_playlists (email, playlist_id) VALUES ('$email', '$playlist_id')";
+
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Playlist saved successfully"]);
+    } else {
+        if ($conn->errno == 1062) {
+            echo json_encode(["status" => "success", "message" => "Playlist already saved"]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "Error saving playlist: " . $conn->error]);
+        }
+    }
+}
+elseif ($action === 'unsavePlaylist') {
+    $data = json_decode(file_get_contents("php://input"), true);
+    
+    $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
+    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    
+    if (empty($playlist_id) || empty($email)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+        exit;
+    }
+
+    $sql = "DELETE FROM saved_playlists WHERE email = '$email' AND playlist_id = '$playlist_id'";
+
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Playlist unsaved successfully"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Error unsaving playlist: " . $conn->error]);
+    }
 }
 else {
     echo json_encode(["status" => "error", "message" => "Invalid action"]);
