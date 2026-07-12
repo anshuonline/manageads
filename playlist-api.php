@@ -92,7 +92,6 @@ elseif ($action === 'getPublicPlaylist') {
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
         
-        // Allow access if public OR if the requester is the owner
         if ((bool)$row['is_public'] || $row['email'] === $email) {
             $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['email'])[0];
             echo json_encode([
@@ -103,6 +102,7 @@ elseif ($action === 'getPublicPlaylist') {
                     "is_public" => (bool)$row['is_public'],
                     "songs" => json_decode($row['songs']),
                     "owner" => $ownerName, 
+                    "owner_email" => $row['email'],
                     "created_at" => $row['created_at'],
                     "updated_at" => $row['updated_at']
                 ]
