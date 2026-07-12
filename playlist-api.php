@@ -72,7 +72,10 @@ elseif ($action === 'getPublicPlaylist') {
         exit;
     }
 
-    $sql = "SELECT playlist_id, email, playlist_name, is_public, songs, created_at, updated_at FROM user_playlists WHERE playlist_id = '$playlist_id'";
+    $sql = "SELECT p.playlist_id, p.email, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, u.display_name 
+            FROM user_playlists p 
+            LEFT JOIN user_profiles u ON p.email = u.email 
+            WHERE p.playlist_id = '$playlist_id'";
     $result = $conn->query($sql);
 
     if ($result && $result->num_rows > 0) {
@@ -80,6 +83,7 @@ elseif ($action === 'getPublicPlaylist') {
         
         // Allow access if public OR if the requester is the owner
         if ((bool)$row['is_public'] || $row['email'] === $email) {
+            $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['email'])[0];
             echo json_encode([
                 "status" => "success",
                 "data" => [
@@ -87,7 +91,7 @@ elseif ($action === 'getPublicPlaylist') {
                     "playlist_name" => $row['playlist_name'],
                     "is_public" => (bool)$row['is_public'],
                     "songs" => json_decode($row['songs']),
-                    "owner" => $row['playlist_id'], // Show ID instead of username
+                    "owner" => $ownerName, 
                     "created_at" => $row['created_at'],
                     "updated_at" => $row['updated_at']
                 ]
@@ -103,27 +107,29 @@ elseif ($action === 'getAllPublicPlaylists') {
     // Optional: filter by search query
     $query = isset($_GET['q']) ? $conn->real_escape_string($_GET['q']) : '';
     
-    $sql = "SELECT playlist_id, email, playlist_name, is_public, songs, created_at, updated_at 
-            FROM user_playlists 
-            WHERE is_public = 1";
+    $sql = "SELECT p.playlist_id, p.email, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, u.display_name 
+            FROM user_playlists p 
+            LEFT JOIN user_profiles u ON p.email = u.email 
+            WHERE p.is_public = 1";
             
     if (!empty($query)) {
-        $sql .= " AND playlist_name LIKE '%$query%'";
+        $sql .= " AND p.playlist_name LIKE '%$query%'";
     }
     
-    $sql .= " ORDER BY created_at DESC LIMIT 50";
+    $sql .= " ORDER BY p.created_at DESC LIMIT 50";
     
     $result = $conn->query($sql);
     
     $playlists = [];
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
+            $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['email'])[0];
             $playlists[] = [
                 "playlist_id" => $row['playlist_id'],
                 "playlist_name" => $row['playlist_name'],
                 "is_public" => (bool)$row['is_public'],
                 "songs" => json_decode($row['songs']),
-                "owner" => $row['playlist_id'],
+                "owner" => $ownerName,
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
             ];
@@ -245,15 +251,20 @@ elseif ($action === 'deletePlaylist') {
 }
 elseif ($action === 'getPublicPlaylists') {
     // Optional endpoint for future feature: Get all public playlists
-    $sql = "SELECT playlist_id, playlist_name, email, songs, created_at, updated_at FROM user_playlists WHERE is_public = 1 ORDER BY created_at DESC LIMIT 50";
+    $sql = "SELECT p.playlist_id, p.playlist_name, p.email, p.songs, p.created_at, p.updated_at, u.display_name 
+            FROM user_playlists p 
+            LEFT JOIN user_profiles u ON p.email = u.email 
+            WHERE p.is_public = 1 
+            ORDER BY p.created_at DESC LIMIT 50";
     $result = $conn->query($sql);
     $playlists = [];
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
+            $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['email'])[0];
             $playlists[] = [
                 "playlist_id" => $row['playlist_id'],
                 "playlist_name" => $row['playlist_name'],
-                "creator" => $row['email'],
+                "creator" => $ownerName,
                 "songs" => json_decode($row['songs']),
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
