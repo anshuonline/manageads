@@ -23,13 +23,14 @@ if ($action === 'getProfile') {
         exit;
     }
 
-    $sql = "SELECT preferred_languages, liked_songs, recent_plays, listening_preferences FROM user_profiles WHERE email = '$email'";
+    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences FROM user_profiles WHERE email = '$email'";
     $result = $conn->query($sql);
 
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
         echo json_encode([
             "status" => "success",
+            "display_name" => $row['display_name'],
             "preferred_languages" => json_decode($row['preferred_languages']),
             "liked_songs" => json_decode($row['liked_songs']),
             "recent_plays" => json_decode($row['recent_plays']),
@@ -39,6 +40,7 @@ if ($action === 'getProfile') {
         echo json_encode([
             "status" => "success",
             "message" => "User not found, returning defaults.",
+            "display_name" => null,
             "preferred_languages" => null,
             "liked_songs" => null,
             "recent_plays" => null,
@@ -90,7 +92,11 @@ elseif ($action === 'updateUsername') {
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Username updated in DB"]);
     } else {
-        echo json_encode(["status" => "error", "message" => "Error updating username: " . $conn->error]);
+        if ($conn->errno == 1062) {
+            echo json_encode(["status" => "error", "message" => "Username is already taken by another user."]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "Error updating username: " . $conn->error]);
+        }
     }
 }
 elseif ($action === 'getAllUsers') {
