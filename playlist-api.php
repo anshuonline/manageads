@@ -26,6 +26,15 @@ $createTableSql = "CREATE TABLE IF NOT EXISTS user_playlists (
 )";
 $conn->query($createTableSql);
 
+$createSavedSql = "CREATE TABLE IF NOT EXISTS saved_playlists (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255),
+    playlist_id VARCHAR(50),
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_save (email, playlist_id)
+)";
+$conn->query($createSavedSql);
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 // Function to generate a unique playlist ID

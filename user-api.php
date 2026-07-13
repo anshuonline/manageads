@@ -37,9 +37,13 @@ if ($action === 'getProfile') {
             "listening_preferences" => json_decode($row['listening_preferences'])
         ]);
     } else {
+        // Auto-create user in DB if not found
+        $insert_sql = "INSERT IGNORE INTO user_profiles (email) VALUES ('$email')";
+        $conn->query($insert_sql);
+        
         echo json_encode([
             "status" => "success",
-            "message" => "User not found, returning defaults.",
+            "message" => "User created, returning defaults.",
             "display_name" => null,
             "preferred_languages" => null,
             "liked_songs" => null,
