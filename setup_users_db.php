@@ -3,6 +3,7 @@ require 'config.php';
 
 $sql = "CREATE TABLE IF NOT EXISTS user_profiles (
     email VARCHAR(255) PRIMARY KEY,
+    display_name VARCHAR(255) UNIQUE,
     preferred_languages JSON,
     liked_songs JSON,
     recent_plays JSON,
@@ -12,8 +13,11 @@ $sql = "CREATE TABLE IF NOT EXISTS user_profiles (
 )";
 
 // Also try to alter the table if it already exists, ignoring errors if column already exists
-$alter_sql = "ALTER TABLE user_profiles ADD COLUMN recent_plays JSON AFTER liked_songs";
-$conn->query($alter_sql);
+$alter_sql1 = "ALTER TABLE user_profiles ADD COLUMN display_name VARCHAR(255) UNIQUE AFTER email";
+$conn->query($alter_sql1);
+
+$alter_sql2 = "ALTER TABLE user_profiles ADD COLUMN recent_plays JSON AFTER liked_songs";
+$conn->query($alter_sql2);
 
 if ($conn->query($sql) === TRUE) {
     echo "Table user_profiles created successfully or already exists.\n";
