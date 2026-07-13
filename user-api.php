@@ -84,25 +84,45 @@ elseif ($action === 'updateUsername') {
     $data = json_decode(file_get_contents("php://input"), true);
     $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
     $display_name = isset($data['display_name']) ? $conn->real_escape_string($data['display_name']) : '';
+    $auto = isset($data['auto']) ? $data['auto'] : false;
     
     if (empty($email) || empty($display_name)) {
         echo json_encode(["status" => "error", "message" => "Email and display_name are required"]);
         exit;
     }
 
-    $sql = "INSERT INTO user_profiles (email, display_name) VALUES ('$email', '$display_name')
-            ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)";
+    $base_name = $display_name;
+    $success = false;
+    $attempts = 0;
+    
+    while (!$success && $attempts < 10) {
+        $sql = "INSERT INTO user_profiles (email, display_name) VALUES ('$email', '$display_name')
+                ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)";
 
-    try {
-        if ($conn->query($sql) === TRUE) {
-            echo json_encode(["status" => "success", "message" => "Username updated in DB"]);
+        try {
+            if ($conn->query($sql) === TRUE) {
+                $success = true;
+                echo json_encode(["status" => "success", "message" => "Username updated in DB", "display_name" => $display_name]);
+                exit;
+            }
+        } catch (Exception $e) {
+            if ($conn->errno == 1062 || (strpos($e->getMessage(), 'Duplicate entry') !== false)) {
+                if ($auto) {
+                    $display_name = $base_name . '-' . mt_rand(100, 9999);
+                    $attempts++;
+                } else {
+                    echo json_encode(["status" => "error", "message" => "Username is already taken by another user."]);
+                    exit;
+                }
+            } else {
+                echo json_encode(["status" => "error", "message" => "Error updating username: " . $e->getMessage()]);
+                exit;
+            }
         }
-    } catch (Exception $e) {
-        if ($conn->errno == 1062 || (strpos($e->getMessage(), 'Duplicate entry') !== false)) {
-            echo json_encode(["status" => "error", "message" => "Username is already taken by another user."]);
-        } else {
-            echo json_encode(["status" => "error", "message" => "Error updating username: " . $e->getMessage()]);
-        }
+    }
+    
+    if (!$success) {
+        echo json_encode(["status" => "error", "message" => "Could not generate a unique username."]);
     }
 }
 elseif ($action === 'getAllUsers') {
