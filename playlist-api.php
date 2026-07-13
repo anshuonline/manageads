@@ -51,13 +51,15 @@ if ($action === 'getPlaylists') {
     }
 
     $sql = "
-        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner 
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner, p.email as owner_email, u.display_name
         FROM user_playlists p 
+        LEFT JOIN user_profiles u ON p.email = u.email
         WHERE p.email = '$email'
         UNION
-        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, s.saved_at as created_at, p.updated_at, 0 as is_owner 
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, s.saved_at as created_at, p.updated_at, 0 as is_owner, p.email as owner_email, u.display_name
         FROM saved_playlists s
         JOIN user_playlists p ON s.playlist_id = p.playlist_id
+        LEFT JOIN user_profiles u ON p.email = u.email
         WHERE s.email = '$email'
         ORDER BY created_at DESC
     ";
@@ -66,12 +68,15 @@ if ($action === 'getPlaylists') {
     $playlists = [];
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
+            $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['owner_email'])[0];
             $playlists[] = [
                 "playlist_id" => $row['playlist_id'],
                 "playlist_name" => $row['playlist_name'],
                 "is_public" => (bool)$row['is_public'],
                 "songs" => json_decode($row['songs']),
                 "is_owner" => (bool)$row['is_owner'],
+                "owner_email" => $row['owner_email'],
+                "owner" => $ownerName,
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
             ];
