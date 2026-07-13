@@ -27,10 +27,9 @@ $createTableSql = "CREATE TABLE IF NOT EXISTS user_playlists (
 $conn->query($createTableSql);
 
 // Auto-add play_count column if missing
-try {
-    @$conn->query("ALTER TABLE user_playlists ADD COLUMN play_count INT DEFAULT 0");
-} catch (Exception $e) {
-    // Ignore if column already exists
+$checkCol = $conn->query("SHOW COLUMNS FROM user_playlists LIKE 'play_count'");
+if ($checkCol && $checkCol->num_rows == 0) {
+    $conn->query("ALTER TABLE user_playlists ADD COLUMN play_count INT DEFAULT 0");
 }
 
 $createSavedSql = "CREATE TABLE IF NOT EXISTS saved_playlists (
