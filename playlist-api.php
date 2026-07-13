@@ -26,6 +26,9 @@ $createTableSql = "CREATE TABLE IF NOT EXISTS user_playlists (
 )";
 $conn->query($createTableSql);
 
+// Auto-add play_count column if missing
+$conn->query("ALTER TABLE user_playlists ADD COLUMN play_count INT DEFAULT 0");
+
 $createSavedSql = "CREATE TABLE IF NOT EXISTS saved_playlists (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255),
@@ -51,12 +54,12 @@ if ($action === 'getPlaylists') {
     }
 
     $sql = "
-        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner, p.email as owner_email, u.display_name
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner, p.email as owner_email, u.display_name, p.play_count
         FROM user_playlists p 
         LEFT JOIN user_profiles u ON p.email = u.email
         WHERE p.email = '$email'
         UNION
-        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, s.saved_at as created_at, p.updated_at, 0 as is_owner, p.email as owner_email, u.display_name
+        SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, s.saved_at as created_at, p.updated_at, 0 as is_owner, p.email as owner_email, u.display_name, p.play_count
         FROM saved_playlists s
         JOIN user_playlists p ON s.playlist_id = p.playlist_id
         LEFT JOIN user_profiles u ON p.email = u.email
@@ -77,6 +80,7 @@ if ($action === 'getPlaylists') {
                 "is_owner" => (bool)$row['is_owner'],
                 "owner_email" => $row['owner_email'],
                 "owner" => $ownerName,
+                "play_count" => (int)$row['play_count'],
                 "created_at" => $row['created_at'],
                 "updated_at" => $row['updated_at']
             ];
@@ -97,7 +101,7 @@ elseif ($action === 'getPublicPlaylist') {
         exit;
     }
 
-    $sql = "SELECT p.playlist_id, p.email, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, u.display_name 
+    $sql = "SELECT p.playlist_id, p.email, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, p.play_count, u.display_name 
             FROM user_playlists p 
             LEFT JOIN user_profiles u ON p.email = u.email 
             WHERE p.playlist_id = '$playlist_id'";
@@ -117,6 +121,7 @@ elseif ($action === 'getPublicPlaylist') {
                     "songs" => json_decode($row['songs']),
                     "owner" => $ownerName, 
                     "owner_email" => $row['email'],
+                    "play_count" => (int)$row['play_count'],
                     "created_at" => $row['created_at'],
                     "updated_at" => $row['updated_at']
                 ]
@@ -341,6 +346,22 @@ elseif ($action === 'unsavePlaylist') {
         echo json_encode(["status" => "success", "message" => "Playlist unsaved successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "Error unsaving playlist: " . $conn->error]);
+    }
+}
+elseif ($action === 'incrementPlayCount') {
+    $data = json_decode(file_get_contents("php://input"), true);
+    $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
+    
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
+        exit;
+    }
+
+    $sql = "UPDATE user_playlists SET play_count = play_count + 1 WHERE playlist_id = '$playlist_id'";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Play count incremented"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Error updating play count: " . $conn->error]);
     }
 }
 else {
