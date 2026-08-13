@@ -22,7 +22,7 @@ if ($result && $result->num_rows > 0) {
     
     echo "<!DOCTYPE html>";
     echo "<html>";
-    echo "<head><style>body { margin: 0; padding: 0; overflow: hidden; background: transparent; }</style></head>";
+    echo "<head><style>body { margin: 0; padding: 0; overflow: hidden; background: transparent; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }</style></head>";
     echo "<body>";
     
     if (!empty($row['custom_code'])) {
