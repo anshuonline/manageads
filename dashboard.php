@@ -498,7 +498,10 @@ if ($is_bookings_page) {
                                     <pre class="text-xs text-gray-400 font-mono"><?php echo htmlspecialchars($script['custom_code']); ?></pre>
                                 </div>
                                 <div class="text-xs text-gray-500 mt-3 text-right">
-                                    Added: <?php echo date('M d, Y', strtotime($script['created_at'])); ?>
+                                    Added: <?php 
+                                        $ts = str_replace('header_script_', '', $script['placeholder_id']);
+                                        echo is_numeric($ts) ? date('M d, Y', intval($ts)) : 'N/A';
+                                    ?>
                                 </div>
                             </div>
                         <?php endforeach; ?>
