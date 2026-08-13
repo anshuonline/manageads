@@ -22,7 +22,7 @@ if ($action === 'prices') {
     }
     echo json_encode($prices);
 } elseif ($action === 'header_scripts') {
-    $result = $conn->query("SELECT * FROM header_scripts WHERE is_active = 1 ORDER BY created_at ASC");
+    $result = $conn->query("SELECT custom_code FROM ads WHERE placeholder_id LIKE 'header_script_%' AND is_active = 1");
     $scripts = [];
     if ($result) {
         while ($row = $result->fetch_assoc()) {

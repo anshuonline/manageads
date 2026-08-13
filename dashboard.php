@@ -18,15 +18,6 @@ if ($check && $check->num_rows == 0) {
     $conn->query("INSERT INTO ads (placeholder_id, placeholder_name, is_active) VALUES ('player_cover_ad', 'Player Cover Ad', 0)");
 }
 
-// Auto-create header_scripts table if it doesn't exist
-$conn->query("CREATE TABLE IF NOT EXISTS header_scripts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    script_name VARCHAR(255) NOT NULL,
-    custom_code TEXT NOT NULL,
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['logout'])) {
         session_destroy();
@@ -34,15 +25,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
     
-    // Header Scripts CRUD
+    // Header Scripts CRUD using ads table
     if (isset($_POST['action'])) {
         if ($_POST['action'] === 'add_header_script') {
             $name = $conn->real_escape_string($_POST['script_name']);
             $code = $conn->real_escape_string($_POST['custom_code']);
             $is_active = isset($_POST['is_active']) ? 1 : 0;
+            $placeholder_id = 'header_script_' . time();
             
-            $stmt = $conn->prepare("INSERT INTO header_scripts (script_name, custom_code, is_active) VALUES (?, ?, ?)");
-            $stmt->bind_param("ssi", $name, $code, $is_active);
+            $stmt = $conn->prepare("INSERT INTO ads (placeholder_id, placeholder_name, custom_code, is_active) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("sssi", $placeholder_id, $name, $code, $is_active);
             if ($stmt->execute()) {
                 $message = "Header script added successfully.";
             } else {
@@ -51,13 +43,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         if ($_POST['action'] === 'update_header_script') {
-            $id = intval($_POST['script_id']);
+            $id = $conn->real_escape_string($_POST['script_id']);
             $name = $conn->real_escape_string($_POST['script_name']);
             $code = $conn->real_escape_string($_POST['custom_code']);
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             
-            $stmt = $conn->prepare("UPDATE header_scripts SET script_name = ?, custom_code = ?, is_active = ? WHERE id = ?");
-            $stmt->bind_param("ssii", $name, $code, $is_active, $id);
+            $stmt = $conn->prepare("UPDATE ads SET placeholder_name = ?, custom_code = ?, is_active = ? WHERE placeholder_id = ?");
+            $stmt->bind_param("ssis", $name, $code, $is_active, $id);
             if ($stmt->execute()) {
                 $message = "Header script updated successfully.";
             } else {
@@ -66,16 +58,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         if ($_POST['action'] === 'delete_header_script') {
-            $id = intval($_POST['script_id']);
-            if ($conn->query("DELETE FROM header_scripts WHERE id = $id")) {
+            $id = $conn->real_escape_string($_POST['script_id']);
+            $stmt = $conn->prepare("DELETE FROM ads WHERE placeholder_id = ?");
+            $stmt->bind_param("s", $id);
+            if ($stmt->execute()) {
                 $message = "Header script deleted successfully.";
             }
         }
         
         if ($_POST['action'] === 'toggle_header_script') {
-            $id = intval($_POST['script_id']);
+            $id = $conn->real_escape_string($_POST['script_id']);
             $is_active = intval($_POST['is_active']);
-            if ($conn->query("UPDATE header_scripts SET is_active = $is_active WHERE id = $id")) {
+            $stmt = $conn->prepare("UPDATE ads SET is_active = ? WHERE placeholder_id = ?");
+            $stmt->bind_param("is", $is_active, $id);
+            if ($stmt->execute()) {
                 $message = "Header script status updated.";
             }
         }
@@ -183,15 +179,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 $adsResult = $conn->query("SELECT * FROM ads");
 $ads = [];
-while($row = $adsResult->fetch_assoc()) {
-    $ads[] = $row;
-}
-
-$headerScriptsResult = $conn->query("SELECT * FROM header_scripts ORDER BY created_at DESC");
 $header_scripts = [];
-if ($headerScriptsResult) {
-    while($row = $headerScriptsResult->fetch_assoc()) {
+while($row = $adsResult->fetch_assoc()) {
+    if (strpos($row['placeholder_id'], 'header_script_') === 0) {
         $header_scripts[] = $row;
+    } else {
+        $ads[] = $row;
     }
 }
 
@@ -476,14 +469,14 @@ if ($is_bookings_page) {
                             <div class="glass-panel p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
                                 <div class="flex justify-between items-start mb-4">
                                     <div>
-                                        <div class="text-xs text-blue-400 font-mono mb-1">ID: #<?php echo $script['id']; ?></div>
-                                        <h3 class="text-lg font-bold text-white"><?php echo htmlspecialchars($script['script_name']); ?></h3>
+                                        <div class="text-xs text-blue-400 font-mono mb-1">ID: <?php echo htmlspecialchars($script['placeholder_id']); ?></div>
+                                        <h3 class="text-lg font-bold text-white"><?php echo htmlspecialchars($script['placeholder_name']); ?></h3>
                                     </div>
                                     <div class="flex items-center gap-4">
                                         <!-- Toggle Status -->
                                         <form method="POST" class="inline">
                                             <input type="hidden" name="action" value="toggle_header_script">
-                                            <input type="hidden" name="script_id" value="<?php echo $script['id']; ?>">
+                                            <input type="hidden" name="script_id" value="<?php echo htmlspecialchars($script['placeholder_id']); ?>">
                                             <input type="hidden" name="is_active" value="<?php echo $script['is_active'] ? '0' : '1'; ?>">
                                             <button type="submit" class="text-sm px-3 py-1 rounded-full border transition-colors <?php echo $script['is_active'] ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/30 hover:bg-gray-500/20'; ?>">
                                                 <?php echo $script['is_active'] ? 'Enabled' : 'Disabled'; ?>
@@ -493,7 +486,7 @@ if ($is_bookings_page) {
                                         <!-- Delete -->
                                         <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this snippet?');">
                                             <input type="hidden" name="action" value="delete_header_script">
-                                            <input type="hidden" name="script_id" value="<?php echo $script['id']; ?>">
+                                            <input type="hidden" name="script_id" value="<?php echo htmlspecialchars($script['placeholder_id']); ?>">
                                             <button type="submit" class="text-red-400 hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-500/10" title="Delete">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
