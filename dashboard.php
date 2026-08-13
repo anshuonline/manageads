@@ -12,6 +12,12 @@ if ($conn->connect_error) {
 
 $message = "";
 
+// Auto-add new player cover ad placeholder if it doesn't exist
+$check = $conn->query("SELECT * FROM ads WHERE placeholder_id = 'player_cover_ad'");
+if ($check && $check->num_rows == 0) {
+    $conn->query("INSERT INTO ads (placeholder_id, placeholder_name, is_active) VALUES ('player_cover_ad', 'Player Cover Ad', 0)");
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['logout'])) {
         session_destroy();
