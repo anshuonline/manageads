@@ -21,6 +21,15 @@ if ($action === 'prices') {
         }
     }
     echo json_encode($prices);
+} elseif ($action === 'header_scripts') {
+    $result = $conn->query("SELECT * FROM header_scripts WHERE is_active = 1 ORDER BY created_at ASC");
+    $scripts = [];
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $scripts[] = $row;
+        }
+    }
+    echo json_encode($scripts);
 } else {
     $placeholder = $_GET['placeholder'] ?? 'bottom_player_banner';
     $stmt = $conn->prepare("SELECT * FROM ads WHERE placeholder_id = ?");

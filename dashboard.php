@@ -18,11 +18,67 @@ if ($check && $check->num_rows == 0) {
     $conn->query("INSERT INTO ads (placeholder_id, placeholder_name, is_active) VALUES ('player_cover_ad', 'Player Cover Ad', 0)");
 }
 
+// Auto-create header_scripts table if it doesn't exist
+$conn->query("CREATE TABLE IF NOT EXISTS header_scripts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    script_name VARCHAR(255) NOT NULL,
+    custom_code TEXT NOT NULL,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['logout'])) {
         session_destroy();
         header("Location: index.php");
         exit;
+    }
+    
+    // Header Scripts CRUD
+    if (isset($_POST['action'])) {
+        if ($_POST['action'] === 'add_header_script') {
+            $name = $conn->real_escape_string($_POST['script_name']);
+            $code = $conn->real_escape_string($_POST['custom_code']);
+            $is_active = isset($_POST['is_active']) ? 1 : 0;
+            
+            $stmt = $conn->prepare("INSERT INTO header_scripts (script_name, custom_code, is_active) VALUES (?, ?, ?)");
+            $stmt->bind_param("ssi", $name, $code, $is_active);
+            if ($stmt->execute()) {
+                $message = "Header script added successfully.";
+            } else {
+                $message = "Error adding header script.";
+            }
+        }
+        
+        if ($_POST['action'] === 'update_header_script') {
+            $id = intval($_POST['script_id']);
+            $name = $conn->real_escape_string($_POST['script_name']);
+            $code = $conn->real_escape_string($_POST['custom_code']);
+            $is_active = isset($_POST['is_active']) ? 1 : 0;
+            
+            $stmt = $conn->prepare("UPDATE header_scripts SET script_name = ?, custom_code = ?, is_active = ? WHERE id = ?");
+            $stmt->bind_param("ssii", $name, $code, $is_active, $id);
+            if ($stmt->execute()) {
+                $message = "Header script updated successfully.";
+            } else {
+                $message = "Error updating header script.";
+            }
+        }
+        
+        if ($_POST['action'] === 'delete_header_script') {
+            $id = intval($_POST['script_id']);
+            if ($conn->query("DELETE FROM header_scripts WHERE id = $id")) {
+                $message = "Header script deleted successfully.";
+            }
+        }
+        
+        if ($_POST['action'] === 'toggle_header_script') {
+            $id = intval($_POST['script_id']);
+            $is_active = intval($_POST['is_active']);
+            if ($conn->query("UPDATE header_scripts SET is_active = $is_active WHERE id = $id")) {
+                $message = "Header script status updated.";
+            }
+        }
     }
     
     if (isset($_POST['action']) && $_POST['action'] === 'update_status') {
@@ -131,8 +187,17 @@ while($row = $adsResult->fetch_assoc()) {
     $ads[] = $row;
 }
 
+$headerScriptsResult = $conn->query("SELECT * FROM header_scripts ORDER BY created_at DESC");
+$header_scripts = [];
+if ($headerScriptsResult) {
+    while($row = $headerScriptsResult->fetch_assoc()) {
+        $header_scripts[] = $row;
+    }
+}
+
 $is_bookings_page = isset($_GET['page']) && $_GET['page'] === 'bookings';
-$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page ? null : 'bottom_player_banner');
+$is_header_scripts_page = isset($_GET['page']) && $_GET['page'] === 'header_scripts';
+$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page ? null : 'bottom_player_banner');
 $current_ad = null;
 if ($selected_placeholder) {
     foreach($ads as $ad) {
@@ -238,10 +303,16 @@ if ($is_bookings_page) {
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-4">Placeholders</div>
             <?php foreach($ads as $ad): ?>
                 <a href="?placeholder=<?php echo $ad['placeholder_id']; ?>" 
-                   class="block px-4 py-3 rounded-lg transition-colors <?php echo !$is_bookings_page && $selected_placeholder == $ad['placeholder_id'] ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                   class="block px-4 py-3 rounded-lg transition-colors <?php echo !$is_bookings_page && !$is_header_scripts_page && $selected_placeholder == $ad['placeholder_id'] ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
                     <i class="fas fa-layer-group mr-2"></i> <?php echo htmlspecialchars($ad['placeholder_name']); ?>
                 </a>
             <?php endforeach; ?>
+
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Scripts & Integrations</div>
+            <a href="?page=header_scripts" 
+               class="block px-4 py-3 rounded-lg transition-colors <?php echo $is_header_scripts_page ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                <i class="fas fa-code mr-2"></i> Custom Snippets
+            </a>
 
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Leads</div>
             <a href="?page=bookings" 
@@ -351,6 +422,95 @@ if ($is_bookings_page) {
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+        <?php elseif($is_header_scripts_page): ?>
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2">Custom Header Snippets</h1>
+                    <p class="text-gray-400">Inject custom scripts or meta tags globally into the GanaTube frontend header.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Add New Snippet Form -->
+                <div class="glass-panel p-8 rounded-2xl h-fit">
+                    <h2 class="text-xl font-bold text-white mb-6">Add New Snippet</h2>
+                    <form method="POST" class="space-y-4">
+                        <input type="hidden" name="action" value="add_header_script">
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Snippet Name (Identifier)</label>
+                            <input type="text" name="script_name" required placeholder="e.g. Adsterra Popunder" class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Custom HTML / JS Code</label>
+                            <textarea name="custom_code" required rows="6" placeholder="<script>...</script>" class="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono text-xs"></textarea>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
+                            <div>
+                                <h3 class="text-white font-medium">Enable Snippet</h3>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="is_active" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-colors">
+                            Add Snippet
+                        </button>
+                    </form>
+                </div>
+
+                <!-- List Snippets -->
+                <div class="lg:col-span-2 space-y-4">
+                    <h2 class="text-xl font-bold text-white mb-6">Active Snippets</h2>
+                    <?php if(count($header_scripts) === 0): ?>
+                        <div class="p-8 text-center text-gray-500 glass-panel rounded-2xl border border-white/10">
+                            No custom snippets added yet.
+                        </div>
+                    <?php else: ?>
+                        <?php foreach($header_scripts as $script): ?>
+                            <div class="glass-panel p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div>
+                                        <div class="text-xs text-blue-400 font-mono mb-1">ID: #<?php echo $script['id']; ?></div>
+                                        <h3 class="text-lg font-bold text-white"><?php echo htmlspecialchars($script['script_name']); ?></h3>
+                                    </div>
+                                    <div class="flex items-center gap-4">
+                                        <!-- Toggle Status -->
+                                        <form method="POST" class="inline">
+                                            <input type="hidden" name="action" value="toggle_header_script">
+                                            <input type="hidden" name="script_id" value="<?php echo $script['id']; ?>">
+                                            <input type="hidden" name="is_active" value="<?php echo $script['is_active'] ? '0' : '1'; ?>">
+                                            <button type="submit" class="text-sm px-3 py-1 rounded-full border transition-colors <?php echo $script['is_active'] ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/30 hover:bg-gray-500/20'; ?>">
+                                                <?php echo $script['is_active'] ? 'Enabled' : 'Disabled'; ?>
+                                            </button>
+                                        </form>
+                                        
+                                        <!-- Delete -->
+                                        <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this snippet?');">
+                                            <input type="hidden" name="action" value="delete_header_script">
+                                            <input type="hidden" name="script_id" value="<?php echo $script['id']; ?>">
+                                            <button type="submit" class="text-red-400 hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-500/10" title="Delete">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-black/50 p-4 rounded-xl border border-white/5 overflow-x-auto">
+                                    <pre class="text-xs text-gray-400 font-mono"><?php echo htmlspecialchars($script['custom_code']); ?></pre>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-3 text-right">
+                                    Added: <?php echo date('M d, Y', strtotime($script['created_at'])); ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php elseif($current_ad): ?>
             <div class="flex justify-between items-center mb-8">
