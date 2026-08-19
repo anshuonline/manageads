@@ -80,6 +80,29 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Create feedback table if not exists
+    $table_sql = "CREATE TABLE IF NOT EXISTS user_feedback (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rating INT NOT NULL,
+        suggestion TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )";
+    $conn->query($table_sql);
+
+    $rating = (int)($data['rating'] ?? 0);
+    $suggestion = $conn->real_escape_string($data['suggestion'] ?? '');
+
+    $sql = "INSERT INTO user_feedback (rating, suggestion) VALUES ($rating, '$suggestion')";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Feedback saved successfully"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to save feedback"]);
+    }
+    exit();
+}
+
 // ── Playlists ────────────────────────────────────────────────────────────────
 
 if ($action === 'get_playlists') {
