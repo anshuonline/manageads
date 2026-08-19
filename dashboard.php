@@ -214,18 +214,6 @@ $feedbacks = [];
 $avg_rating = 0;
 $total_feedbacks = 0;
 if ($is_feedback_page) {
-    // Make sure table exists before querying
-    $conn->query("CREATE TABLE IF NOT EXISTS user_feedback (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        rating INT NOT NULL,
-        suggestion TEXT,
-        user_name VARCHAR(100) DEFAULT 'Guest',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    
-    // Auto-patch for existing table
-    $conn->query("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS user_name VARCHAR(100) DEFAULT 'Guest'");
-
     $feedbackResult = $conn->query("SELECT * FROM user_feedback ORDER BY created_at DESC");
     $total_rating_sum = 0;
     if ($feedbackResult) {

@@ -18,21 +18,6 @@ require_once 'config.php';
 
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // Create admins table if not exists
-    $table_sql = "CREATE TABLE IF NOT EXISTS admins (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE,
-        password VARCHAR(255) NOT NULL
-    )";
-    $conn->query($table_sql);
-
-    // Check if default admin exists, if not create one
-    $result = $conn->query("SELECT * FROM admins WHERE username = 'admin'");
-    if ($result->num_rows === 0) {
-        $hashed = md5('admin123');
-        $conn->query("INSERT INTO admins (username, password) VALUES ('admin', '$hashed')");
-    }
-
     $username = $conn->real_escape_string($data['username'] ?? '');
     $password = $data['password'] ?? '';
     
@@ -81,19 +66,6 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Create feedback table if not exists
-    $table_sql = "CREATE TABLE IF NOT EXISTS user_feedback (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        rating INT NOT NULL,
-        suggestion TEXT,
-        user_name VARCHAR(100) DEFAULT 'Guest',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )";
-    $conn->query($table_sql);
-    
-    // Add column if it doesn't exist (for backward compatibility if table was just created)
-    $conn->query("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS user_name VARCHAR(100) DEFAULT 'Guest'");
-
     $rating = (int)($data['rating'] ?? 0);
     $suggestion = $conn->real_escape_string($data['suggestion'] ?? '');
     $user_name = $conn->real_escape_string($data['user_name'] ?? 'Guest');
