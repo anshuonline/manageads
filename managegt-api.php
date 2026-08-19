@@ -86,14 +86,19 @@ if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         id INT AUTO_INCREMENT PRIMARY KEY,
         rating INT NOT NULL,
         suggestion TEXT,
+        user_name VARCHAR(100) DEFAULT 'Guest',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )";
     $conn->query($table_sql);
+    
+    // Add column if it doesn't exist (for backward compatibility if table was just created)
+    $conn->query("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS user_name VARCHAR(100) DEFAULT 'Guest'");
 
     $rating = (int)($data['rating'] ?? 0);
     $suggestion = $conn->real_escape_string($data['suggestion'] ?? '');
+    $user_name = $conn->real_escape_string($data['user_name'] ?? 'Guest');
 
-    $sql = "INSERT INTO user_feedback (rating, suggestion) VALUES ($rating, '$suggestion')";
+    $sql = "INSERT INTO user_feedback (rating, suggestion, user_name) VALUES ($rating, '$suggestion', '$user_name')";
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Feedback saved successfully"]);
     } else {

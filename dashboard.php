@@ -211,18 +211,31 @@ if ($is_bookings_page) {
 }
 
 $feedbacks = [];
+$avg_rating = 0;
+$total_feedbacks = 0;
 if ($is_feedback_page) {
     // Make sure table exists before querying
     $conn->query("CREATE TABLE IF NOT EXISTS user_feedback (
         id INT AUTO_INCREMENT PRIMARY KEY,
         rating INT NOT NULL,
         suggestion TEXT,
+        user_name VARCHAR(100) DEFAULT 'Guest',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+    
+    // Auto-patch for existing table
+    $conn->query("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS user_name VARCHAR(100) DEFAULT 'Guest'");
+
     $feedbackResult = $conn->query("SELECT * FROM user_feedback ORDER BY created_at DESC");
+    $total_rating_sum = 0;
     if ($feedbackResult) {
         while($row = $feedbackResult->fetch_assoc()) {
             $feedbacks[] = $row;
+            $total_rating_sum += (int)$row['rating'];
+        }
+        $total_feedbacks = count($feedbacks);
+        if ($total_feedbacks > 0) {
+            $avg_rating = round($total_rating_sum / $total_feedbacks, 1);
         }
     }
 }
@@ -446,13 +459,26 @@ if ($is_feedback_page) {
                     <h1 class="text-3xl font-bold text-white mb-2">User Feedback</h1>
                     <p class="text-gray-400">View ratings and suggestions from GanaTube users.</p>
                 </div>
+                <div class="flex items-center space-x-4 bg-white/5 px-6 py-3 rounded-xl border border-white/10">
+                    <div class="text-center">
+                        <div class="text-sm text-gray-400 mb-1">Average Rating</div>
+                        <div class="text-2xl font-bold text-yellow-400 flex items-center justify-center">
+                            <?php echo $avg_rating; ?> <i class="fas fa-star text-lg ml-2"></i>
+                        </div>
+                    </div>
+                    <div class="w-px h-10 bg-white/10 mx-2"></div>
+                    <div class="text-center">
+                        <div class="text-sm text-gray-400 mb-1">Total Ratings</div>
+                        <div class="text-2xl font-bold text-white"><?php echo $total_feedbacks; ?></div>
+                    </div>
+                </div>
             </div>
 
             <div class="glass-panel p-8 rounded-2xl overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="text-gray-400 border-b border-white/10">
-                            <th class="py-4 px-4 font-medium">Date</th>
+                            <th class="py-4 px-4 font-medium">User</th>
                             <th class="py-4 px-4 font-medium">Rating</th>
                             <th class="py-4 px-4 font-medium">Suggestion</th>
                         </tr>
@@ -463,7 +489,10 @@ if ($is_feedback_page) {
                         <?php else: ?>
                             <?php foreach($feedbacks as $f): ?>
                                 <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                    <td class="py-4 px-4 text-sm text-gray-300"><?php echo date('M d, Y h:i A', strtotime($f['created_at'])); ?></td>
+                                    <td class="py-4 px-4">
+                                        <div class="font-medium text-white"><?php echo htmlspecialchars($f['user_name'] ?? 'Guest'); ?></div>
+                                        <div class="text-xs text-gray-400 mt-1"><?php echo date('M d, Y h:i A', strtotime($f['created_at'])); ?></div>
+                                    </td>
                                     <td class="py-4 px-4">
                                         <div class="text-yellow-400">
                                             <?php for($i=1; $i<=5; $i++): ?>
