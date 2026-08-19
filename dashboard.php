@@ -190,7 +190,8 @@ while($row = $adsResult->fetch_assoc()) {
 
 $is_bookings_page = isset($_GET['page']) && $_GET['page'] === 'bookings';
 $is_header_scripts_page = isset($_GET['page']) && $_GET['page'] === 'header_scripts';
-$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page ? null : 'bottom_player_banner');
+$is_feedback_page = isset($_GET['page']) && $_GET['page'] === 'feedback';
+$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page || $is_feedback_page ? null : 'bottom_player_banner');
 $current_ad = null;
 if ($selected_placeholder) {
     foreach($ads as $ad) {
@@ -206,6 +207,23 @@ if ($is_bookings_page) {
     $bookingsResult = $conn->query("SELECT * FROM campaign_bookings ORDER BY created_at DESC");
     while($row = $bookingsResult->fetch_assoc()) {
         $bookings[] = $row;
+    }
+}
+
+$feedbacks = [];
+if ($is_feedback_page) {
+    // Make sure table exists before querying
+    $conn->query("CREATE TABLE IF NOT EXISTS user_feedback (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rating INT NOT NULL,
+        suggestion TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $feedbackResult = $conn->query("SELECT * FROM user_feedback ORDER BY created_at DESC");
+    if ($feedbackResult) {
+        while($row = $feedbackResult->fetch_assoc()) {
+            $feedbacks[] = $row;
+        }
     }
 }
 ?>
@@ -296,7 +314,7 @@ if ($is_bookings_page) {
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-4">Placeholders</div>
             <?php foreach($ads as $ad): ?>
                 <a href="?placeholder=<?php echo $ad['placeholder_id']; ?>" 
-                   class="block px-4 py-3 rounded-lg transition-colors <?php echo !$is_bookings_page && !$is_header_scripts_page && $selected_placeholder == $ad['placeholder_id'] ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                   class="block px-4 py-3 rounded-lg transition-colors <?php echo !$is_bookings_page && !$is_header_scripts_page && !$is_feedback_page && $selected_placeholder == $ad['placeholder_id'] ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
                     <i class="fas fa-layer-group mr-2"></i> <?php echo htmlspecialchars($ad['placeholder_name']); ?>
                 </a>
             <?php endforeach; ?>
@@ -307,10 +325,15 @@ if ($is_bookings_page) {
                 <i class="fas fa-code mr-2"></i> Custom Snippets
             </a>
 
-            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Leads</div>
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Leads & Feedback</div>
             <a href="?page=bookings" 
                class="block px-4 py-3 rounded-lg transition-colors <?php echo $is_bookings_page ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
                 <i class="fas fa-bullhorn mr-2"></i> Campaign Inquiries
+            </a>
+            
+            <a href="?page=feedback" 
+               class="block px-4 py-3 rounded-lg mt-2 transition-colors <?php echo $is_feedback_page ? 'bg-yellow-600/20 text-yellow-400 border border-yellow-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                <i class="fas fa-star mr-2"></i> User Feedback
             </a>
         </nav>
         <div class="p-4 mt-auto">
@@ -416,6 +439,48 @@ if ($is_bookings_page) {
                     </tbody>
                 </table>
             </div>
+
+        <?php elseif($is_feedback_page): ?>
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2">User Feedback</h1>
+                    <p class="text-gray-400">View ratings and suggestions from GanaTube users.</p>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-2xl overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-white/10">
+                            <th class="py-4 px-4 font-medium">Date</th>
+                            <th class="py-4 px-4 font-medium">Rating</th>
+                            <th class="py-4 px-4 font-medium">Suggestion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(count($feedbacks) === 0): ?>
+                            <tr><td colspan="3" class="py-8 text-center text-gray-500">No feedback submitted yet.</td></tr>
+                        <?php else: ?>
+                            <?php foreach($feedbacks as $f): ?>
+                                <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                    <td class="py-4 px-4 text-sm text-gray-300"><?php echo date('M d, Y h:i A', strtotime($f['created_at'])); ?></td>
+                                    <td class="py-4 px-4">
+                                        <div class="text-yellow-400">
+                                            <?php for($i=1; $i<=5; $i++): ?>
+                                                <i class="fa-star <?php echo $i <= $f['rating'] ? 'fas' : 'far'; ?>"></i>
+                                            <?php endfor; ?>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-4 text-gray-300">
+                                        <?php echo nl2br(htmlspecialchars($f['suggestion'])); ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
         <?php elseif($is_header_scripts_page): ?>
             <div class="flex justify-between items-center mb-8">
                 <div>
