@@ -314,10 +314,20 @@ elseif ($action === 'savePlaylist') {
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
     $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $playlist_name = isset($data['playlist_name']) ? $conn->real_escape_string($data['playlist_name']) : '';
+    $songs = isset($data['songs']) && is_array($data['songs']) ? $conn->real_escape_string(json_encode($data['songs'])) : '[]';
     
     if (empty($playlist_id) || empty($email)) {
         echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
         exit;
+    }
+
+    // Check if playlist exists in user_playlists
+    $checkRes = $conn->query("SELECT id FROM user_playlists WHERE playlist_id = '$playlist_id'");
+    if ($checkRes && $checkRes->num_rows == 0 && !empty($playlist_name)) {
+        // It's a YouTube playlist or external, create an entry in user_playlists
+        // so that the JOIN in getPlaylists works.
+        $conn->query("INSERT INTO user_playlists (playlist_id, email, playlist_name, is_public, songs) VALUES ('$playlist_id', 'youtube@ganatube.in', '$playlist_name', 1, '$songs')");
     }
 
     $sql = "INSERT INTO saved_playlists (email, playlist_id) VALUES ('$email', '$playlist_id')";
