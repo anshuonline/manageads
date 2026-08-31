@@ -76,9 +76,9 @@ if ($action === 'status') {
     $new_spins = (int)$user['spins_left'] - 1;
     $g_coins = (int)$user['g_coins'];
     
-    // 80% lose, 20% win
+    // 45% G Coins, 55% Better luck next time
     $rand = rand(1, 100);
-    $win = ($rand <= 20);
+    $win = ($rand <= 45);
     $coins_won = 0;
     
     // Wheel segments based on user image:
