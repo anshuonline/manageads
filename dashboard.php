@@ -467,19 +467,25 @@ if ($is_feedback_page) {
                     <thead>
                         <tr class="text-gray-400 border-b border-white/10">
                             <th class="py-4 px-4 font-medium">User</th>
+                            <th class="py-4 px-4 font-medium">Location</th>
                             <th class="py-4 px-4 font-medium">Rating</th>
                             <th class="py-4 px-4 font-medium">Suggestion</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if(count($feedbacks) === 0): ?>
-                            <tr><td colspan="3" class="py-8 text-center text-gray-500">No feedback submitted yet.</td></tr>
+                            <tr><td colspan="4" class="py-8 text-center text-gray-500">No feedback submitted yet.</td></tr>
                         <?php else: ?>
                             <?php foreach($feedbacks as $f): ?>
                                 <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                                     <td class="py-4 px-4">
                                         <div class="font-medium text-white"><?php echo htmlspecialchars($f['user_name'] ?? 'Guest'); ?></div>
                                         <div class="text-xs text-gray-400 mt-1"><?php echo date('M d, Y h:i A', strtotime($f['created_at'])); ?></div>
+                                    </td>
+                                    <td class="py-4 px-4">
+                                        <div class="text-sm text-gray-300">
+                                            <i class="fas fa-map-marker-alt text-gray-500 mr-1"></i> <?php echo htmlspecialchars($f['location'] ?? 'Unknown'); ?>
+                                        </div>
                                     </td>
                                     <td class="py-4 px-4">
                                         <div class="text-yellow-400">

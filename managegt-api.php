@@ -70,7 +70,32 @@ if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $suggestion = $conn->real_escape_string($data['suggestion'] ?? '');
     $user_name = $conn->real_escape_string($data['user_name'] ?? 'Guest');
 
-    $sql = "INSERT INTO user_feedback (rating, suggestion, user_name) VALUES ($rating, '$suggestion', '$user_name')";
+    // Get IP
+    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip = explode(',', $ip)[0];
+    
+    // Fetch Location
+    $location = 'Unknown';
+    if ($ip && $ip !== '::1' && $ip !== '127.0.0.1') {
+        $ch = curl_init("http://ip-api.com/json/" . trim($ip));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        $res = curl_exec($ch);
+        curl_close($ch);
+        if ($res) {
+            $geo = json_decode($res, true);
+            if ($geo && isset($geo['status']) && $geo['status'] === 'success') {
+                $location = $geo['city'] . ', ' . $geo['regionName'] . ', ' . $geo['country'];
+            }
+        }
+    }
+    
+    $location = $conn->real_escape_string($location);
+
+    // Make sure column exists (lazy migration just in case it wasn't added manually)
+    $conn->query("ALTER TABLE user_feedback ADD COLUMN location VARCHAR(255) DEFAULT 'Unknown'");
+
+    $sql = "INSERT INTO user_feedback (rating, suggestion, user_name, location) VALUES ($rating, '$suggestion', '$user_name', '$location')";
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Feedback saved successfully"]);
     } else {
