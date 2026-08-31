@@ -75,6 +75,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "Header script status updated.";
             }
         }
+        
+        if ($_POST['action'] === 'delete_feedback') {
+            $id = intval($_POST['feedback_id']);
+            $stmt = $conn->prepare("DELETE FROM user_feedback WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            if ($stmt->execute()) {
+                $message = "Feedback deleted successfully.";
+            } else {
+                $message = "Error deleting feedback.";
+            }
+        }
     }
     
     if (isset($_POST['action']) && $_POST['action'] === 'update_status') {
@@ -470,11 +481,12 @@ if ($is_feedback_page) {
                             <th class="py-4 px-4 font-medium">Location</th>
                             <th class="py-4 px-4 font-medium">Rating</th>
                             <th class="py-4 px-4 font-medium">Suggestion</th>
+                            <th class="py-4 px-4 font-medium text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if(count($feedbacks) === 0): ?>
-                            <tr><td colspan="4" class="py-8 text-center text-gray-500">No feedback submitted yet.</td></tr>
+                            <tr><td colspan="5" class="py-8 text-center text-gray-500">No feedback submitted yet.</td></tr>
                         <?php else: ?>
                             <?php foreach($feedbacks as $f): ?>
                                 <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
@@ -496,6 +508,15 @@ if ($is_feedback_page) {
                                     </td>
                                     <td class="py-4 px-4 text-gray-300">
                                         <?php echo nl2br(htmlspecialchars($f['suggestion'])); ?>
+                                    </td>
+                                    <td class="py-4 px-4 text-right">
+                                        <form method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this feedback?');">
+                                            <input type="hidden" name="action" value="delete_feedback">
+                                            <input type="hidden" name="feedback_id" value="<?php echo $f['id']; ?>">
+                                            <button type="submit" class="text-red-400 hover:text-red-300 transition-colors p-2 rounded hover:bg-red-500/10" title="Delete Feedback">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
