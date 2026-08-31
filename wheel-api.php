@@ -12,7 +12,7 @@ require_once 'config.php';
 
 // Function to authenticate user based on email (similar to user-api.php)
 function authenticate($conn, $email) {
-    $stmt = $conn->prepare("SELECT id, g_coins, spins_left, last_spin_reset FROM users WHERE email = ?");
+    $stmt = $conn->prepare("SELECT email, g_coins, spins_left, last_spin_reset FROM user_profiles WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -42,8 +42,8 @@ $last_reset = $user['last_spin_reset'];
 
 // Reset daily spins to 3 if last reset was not today
 if ($last_reset !== $today) {
-    $stmt = $conn->prepare("UPDATE users SET spins_left = 3, last_spin_reset = ? WHERE id = ?");
-    $stmt->bind_param("si", $today, $user['id']);
+    $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = 3, last_spin_reset = ? WHERE email = ?");
+    $stmt->bind_param("ss", $today, $user['email']);
     $stmt->execute();
     $user['spins_left'] = 3;
     $user['last_spin_reset'] = $today;
@@ -90,8 +90,8 @@ if ($action === 'status') {
         $segment = 1;
     }
     
-    $stmt = $conn->prepare("UPDATE users SET spins_left = ?, g_coins = ? WHERE id = ?");
-    $stmt->bind_param("iii", $new_spins, $g_coins, $user['id']);
+    $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = ?, g_coins = ? WHERE email = ?");
+    $stmt->bind_param("iis", $new_spins, $g_coins, $user['email']);
     $stmt->execute();
     
     echo json_encode([
@@ -104,8 +104,8 @@ if ($action === 'status') {
     ]);
 } elseif ($action === 'add_chance' && $_SERVER['REQUEST_METHOD'] == 'POST') {
     $new_spins = (int)$user['spins_left'] + 1;
-    $stmt = $conn->prepare("UPDATE users SET spins_left = ? WHERE id = ?");
-    $stmt->bind_param("ii", $new_spins, $user['id']);
+    $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = ? WHERE email = ?");
+    $stmt->bind_param("is", $new_spins, $user['email']);
     $stmt->execute();
     
     echo json_encode([

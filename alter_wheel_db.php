@@ -5,9 +5,9 @@ header('Content-Type: application/json');
 require_once 'config.php';
 
 $queries = [
-    "ALTER TABLE users ADD COLUMN g_coins INT DEFAULT 0",
-    "ALTER TABLE users ADD COLUMN spins_left INT DEFAULT 3",
-    "ALTER TABLE users ADD COLUMN last_spin_reset DATE DEFAULT NULL"
+    "ALTER TABLE user_profiles ADD COLUMN g_coins INT DEFAULT 0",
+    "ALTER TABLE user_profiles ADD COLUMN spins_left INT DEFAULT 3",
+    "ALTER TABLE user_profiles ADD COLUMN last_spin_reset DATE DEFAULT NULL"
 ];
 
 $success = [];
