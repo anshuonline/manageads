@@ -207,7 +207,8 @@ while($row = $adsResult->fetch_assoc()) {
 $is_bookings_page = isset($_GET['page']) && $_GET['page'] === 'bookings';
 $is_header_scripts_page = isset($_GET['page']) && $_GET['page'] === 'header_scripts';
 $is_feedback_page = isset($_GET['page']) && $_GET['page'] === 'feedback';
-$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page || $is_feedback_page ? null : 'bottom_player_banner');
+$is_spin_stats_page = isset($_GET['page']) && $_GET['page'] === 'spin_stats';
+$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page || $is_feedback_page || $is_spin_stats_page ? null : 'bottom_player_banner');
 $current_ad = null;
 if ($selected_placeholder) {
     foreach($ads as $ad) {
@@ -240,6 +241,16 @@ if ($is_feedback_page) {
         $total_feedbacks = count($feedbacks);
         if ($total_feedbacks > 0) {
             $avg_rating = round($total_rating_sum / $total_feedbacks, 1);
+        }
+    }
+}
+
+$spin_stats = [];
+if ($is_spin_stats_page) {
+    $spinResult = $conn->query("SELECT * FROM spin_history ORDER BY spin_time DESC");
+    if ($spinResult) {
+        while($row = $spinResult->fetch_assoc()) {
+            $spin_stats[] = $row;
         }
     }
 }
@@ -340,6 +351,11 @@ if ($is_feedback_page) {
             <a href="?page=header_scripts" 
                class="block px-4 py-3 rounded-lg transition-colors <?php echo $is_header_scripts_page ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
                 <i class="fas fa-code mr-2"></i> Custom Snippets
+            </a>
+            
+            <a href="?page=spin_stats" 
+               class="block px-4 py-3 rounded-lg mt-2 transition-colors <?php echo $is_spin_stats_page ? 'bg-orange-600/20 text-orange-400 border border-orange-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                <i class="fas fa-gamepad mr-2"></i> Spin Statistics
             </a>
 
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Leads & Feedback</div>
@@ -450,6 +466,47 @@ if ($is_feedback_page) {
                                             <i class="fas fa-print"></i>
                                         </a>
                                     </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+        <?php elseif($is_spin_stats_page): ?>
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2">Spin Statistics</h1>
+                    <p class="text-gray-400">View history of users who played Spin & Win.</p>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8 rounded-2xl overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-white/10">
+                            <th class="py-4 px-4 font-medium">User Email</th>
+                            <th class="py-4 px-4 font-medium">Result</th>
+                            <th class="py-4 px-4 font-medium">G Coins Won</th>
+                            <th class="py-4 px-4 font-medium">Time (IST)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(count($spin_stats) === 0): ?>
+                            <tr><td colspan="4" class="py-8 text-center text-gray-500">No spins recorded yet.</td></tr>
+                        <?php else: ?>
+                            <?php foreach($spin_stats as $s): ?>
+                                <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                    <td class="py-4 px-4 text-white"><?php echo htmlspecialchars($s['user_email']); ?></td>
+                                    <td class="py-4 px-4">
+                                        <?php if($s['result'] === 'win'): ?>
+                                            <span class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-bold uppercase">Win</span>
+                                        <?php else: ?>
+                                            <span class="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-bold uppercase">Lose</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="py-4 px-4 text-yellow-400 font-bold"><?php echo htmlspecialchars($s['g_coins_won']); ?></td>
+                                    <td class="py-4 px-4 text-gray-400 text-sm"><?php echo date('M d, Y h:i A', strtotime($s['spin_time'])); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>

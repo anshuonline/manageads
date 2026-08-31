@@ -94,9 +94,15 @@ if ($action === 'status') {
     $stmt->bind_param("iis", $new_spins, $g_coins, $user['email']);
     $stmt->execute();
     
+    // Log history
+    $resultStr = $win ? "win" : "lose";
+    $hist_stmt = $conn->prepare("INSERT INTO spin_history (user_email, result, g_coins_won) VALUES (?, ?, ?)");
+    $hist_stmt->bind_param("ssi", $user['email'], $resultStr, $coins_won);
+    $hist_stmt->execute();
+    
     echo json_encode([
         "status" => "success",
-        "result" => $win ? "win" : "lose",
+        "result" => $resultStr,
         "coins_won" => $coins_won,
         "segment" => $segment,
         "g_coins" => $g_coins,
