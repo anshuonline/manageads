@@ -18,6 +18,17 @@ function authenticate($conn, $email) {
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         return $result->fetch_assoc();
+    } else {
+        // Auto-create user
+        $insert_stmt = $conn->prepare("INSERT IGNORE INTO user_profiles (email, spins_left, g_coins, last_spin_reset) VALUES (?, 3, 0, ?)");
+        $today = date('Y-m-d');
+        $insert_stmt->bind_param("ss", $email, $today);
+        $insert_stmt->execute();
+        
+        // Fetch again
+        $stmt->execute();
+        $result = $stmt->get_result();
+        return $result->fetch_assoc();
     }
     return null;
 }
