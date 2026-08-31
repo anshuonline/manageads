@@ -5,16 +5,8 @@
  * Or set it up as a Webhook in GitHub.
  */
 
-// Basic security to prevent random people from triggering deployment
-$secret_key = 'ganatube123';
-
-// Check if a webhook payload is sent (GitHub Webhooks POST request) or manual GET request
+// No key check requested by user
 $is_webhook = ($_SERVER['REQUEST_METHOD'] === 'POST');
-
-if (!$is_webhook && (!isset($_GET['key']) || $_GET['key'] !== $secret_key)) {
-    http_response_code(403);
-    die("Unauthorized.");
-}
 
 $dir = __DIR__;
 chdir($dir);
