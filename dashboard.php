@@ -6,6 +6,11 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 }
 
 require_once __DIR__ . "/config.php";
+
+// Set Indian Timezone globally for PHP and MySQL
+date_default_timezone_set('Asia/Kolkata');
+$conn->query("SET time_zone = '+05:30'");
+
 if ($conn->connect_error) {
     die("Database connection failed.");
 }
