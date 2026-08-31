@@ -91,6 +91,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "Error deleting feedback.";
             }
         }
+        
+        if ($_POST['action'] === 'add_spin_chances') {
+            $email = $conn->real_escape_string($_POST['user_email']);
+            $chances = intval($_POST['chances_to_add']);
+            
+            $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = spins_left + ? WHERE email = ?");
+            $stmt->bind_param("is", $chances, $email);
+            if ($stmt->execute()) {
+                if ($stmt->affected_rows > 0) {
+                    $message = "Successfully added $chances spin chances to $email.";
+                } else {
+                    $message = "Error: User with email '$email' not found. They must login to the app first.";
+                }
+            } else {
+                $message = "Error adding chances.";
+            }
+        }
     }
     
     if (isset($_POST['action']) && $_POST['action'] === 'update_status') {
@@ -208,7 +225,8 @@ $is_bookings_page = isset($_GET['page']) && $_GET['page'] === 'bookings';
 $is_header_scripts_page = isset($_GET['page']) && $_GET['page'] === 'header_scripts';
 $is_feedback_page = isset($_GET['page']) && $_GET['page'] === 'feedback';
 $is_spin_stats_page = isset($_GET['page']) && $_GET['page'] === 'spin_stats';
-$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page || $is_feedback_page || $is_spin_stats_page ? null : 'bottom_player_banner');
+$is_manage_users_page = isset($_GET['page']) && $_GET['page'] === 'manage_users';
+$selected_placeholder = $_GET['placeholder'] ?? ($is_bookings_page || $is_header_scripts_page || $is_feedback_page || $is_spin_stats_page || $is_manage_users_page ? null : 'bottom_player_banner');
 $current_ad = null;
 if ($selected_placeholder) {
     foreach($ads as $ad) {
@@ -356,6 +374,11 @@ if ($is_spin_stats_page) {
             <a href="?page=spin_stats" 
                class="block px-4 py-3 rounded-lg mt-2 transition-colors <?php echo $is_spin_stats_page ? 'bg-orange-600/20 text-orange-400 border border-orange-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
                 <i class="fas fa-gamepad mr-2"></i> Spin Statistics
+            </a>
+            
+            <a href="?page=manage_users" 
+               class="block px-4 py-3 rounded-lg mt-2 transition-colors <?php echo $is_manage_users_page ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:bg-white/5 hover:text-white'; ?>">
+                <i class="fas fa-users mr-2"></i> Manage Users
             </a>
 
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 mt-8">Leads & Feedback</div>
@@ -512,6 +535,47 @@ if ($is_spin_stats_page) {
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+
+        <?php elseif($is_manage_users_page): ?>
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2">Manage Users & Spins</h1>
+                    <p class="text-gray-400">Search a user by Gmail and grant them extra spin chances.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass-panel p-8 rounded-2xl">
+                    <h2 class="text-xl font-bold text-white mb-6">Grant Spin Chances</h2>
+                    <form method="POST" class="space-y-4">
+                        <input type="hidden" name="action" value="add_spin_chances">
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">User's Gmail Address</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fas fa-envelope text-gray-500"></i>
+                                </div>
+                                <input type="email" name="user_email" required placeholder="user@gmail.com" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Chances to Add</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fas fa-gift text-gray-500"></i>
+                                </div>
+                                <input type="number" name="chances_to_add" required min="1" max="100" value="1" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-colors flex justify-center items-center">
+                            <i class="fas fa-plus-circle mr-2"></i> Add Chances
+                        </button>
+                    </form>
+                </div>
             </div>
 
         <?php elseif($is_feedback_page): ?>
