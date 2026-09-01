@@ -6,7 +6,7 @@
 
 header('Content-Type: text/plain');
 
-$url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+$url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
 $file = __DIR__ . '/yt-dlp';
 
 echo "Starting download from: $url\n";
@@ -42,10 +42,7 @@ if (file_exists($file) && filesize($file) > 1000000) {
     
     // Test the binary
     echo "\nTesting execution...\n";
-    $output = shell_exec("python3 " . escapeshellarg($file) . " --version 2>&1");
-    if (!$output) {
-        $output = shell_exec(escapeshellarg($file) . " --version 2>&1");
-    }
+    $output = shell_exec(escapeshellarg($file) . " --version 2>&1");
     
     echo "Version Output: \n$output\n";
     echo "\nSetup Complete! You can now use python-proxy.php!";

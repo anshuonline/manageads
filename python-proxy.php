@@ -21,17 +21,9 @@ if (!file_exists($ytdlp_path)) {
 }
 
 // Build the command: -g gets the direct URL, -f bestaudio gets the best audio stream
-// --no-warnings --quiet suppresses extraneous output
-$command = "python3 " . escapeshellarg($ytdlp_path) . " -f bestaudio -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
-
-// Execute command
+// Execute command directly as an executable
+$command = escapeshellarg($ytdlp_path) . " -f bestaudio -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
-
-if (!$output) {
-    // Try without explicit python3 command
-    $command2 = escapeshellarg($ytdlp_path) . " -f bestaudio -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
-    $output = shell_exec($command2);
-}
 
 $output = trim($output);
 
