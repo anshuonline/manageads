@@ -653,14 +653,22 @@ if ($is_spin_stats_page) {
                                 <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                                     <td class="py-4 px-4 text-white"><?php echo htmlspecialchars($s['user_email']); ?></td>
                                     <td class="py-4 px-4">
-                                        <?php if($s['result'] === 'win'): ?>
+                                        <?php if($s['result'] === 'win' || strpos($s['result'], 'win:') === 0): ?>
                                             <span class="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-bold uppercase">Win</span>
                                         <?php else: ?>
                                             <span class="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-bold uppercase">Lose</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="py-4 px-4 font-bold <?php echo $s['result'] === 'win' ? 'text-yellow-400' : 'text-gray-500'; ?>">
-                                        <?php echo $s['result'] === 'win' ? htmlspecialchars($s['g_coins_won']) . ' G Coins' : 'Better Luck Next Time'; ?>
+                                    <td class="py-4 px-4 font-bold <?php echo ($s['result'] === 'win' || strpos($s['result'], 'win:') === 0) ? 'text-yellow-400' : 'text-gray-500'; ?>">
+                                        <?php 
+                                            if ($s['result'] === 'win') {
+                                                echo htmlspecialchars($s['g_coins_won']) . ' G Coins';
+                                            } else if (strpos($s['result'], 'win:') === 0) {
+                                                echo htmlspecialchars(substr($s['result'], 5));
+                                            } else {
+                                                echo 'Better Luck Next Time';
+                                            }
+                                        ?>
                                     </td>
                                     <td class="py-4 px-4 text-gray-400 text-sm"><?php echo date('M d, Y h:i A', strtotime($s['spin_time'])); ?></td>
                                 </tr>
