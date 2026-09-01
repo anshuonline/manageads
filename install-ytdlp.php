@@ -40,9 +40,15 @@ if (file_exists($file) && filesize($file) > 1000000) {
         shell_exec('chmod +x ' . escapeshellarg($file));
     }
     
+    // Create a local tmp directory to bypass Hostinger's /tmp noexec restriction
+    $tmpDir = __DIR__ . '/tmp';
+    if (!is_dir($tmpDir)) {
+        mkdir($tmpDir, 0755, true);
+    }
+    
     // Test the binary
     echo "\nTesting execution...\n";
-    $output = shell_exec(escapeshellarg($file) . " --version 2>&1");
+    $output = shell_exec("export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($file) . " --version 2>&1");
     
     echo "Version Output: \n$output\n";
     echo "\nSetup Complete! You can now use python-proxy.php!";

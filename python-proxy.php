@@ -20,9 +20,11 @@ if (!file_exists($ytdlp_path)) {
     die(json_encode(['error' => 'yt-dlp not found on server. Please run install-ytdlp.php first.']));
 }
 
+$tmpDir = __DIR__ . '/tmp';
+
 // Build the command: -g gets the direct URL, -f bestaudio gets the best audio stream
-// Execute command directly as an executable
-$command = escapeshellarg($ytdlp_path) . " -f bestaudio -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
+// Execute command directly as an executable, using local TMPDIR to bypass Hostinger /tmp noexec
+$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " -f bestaudio -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
 
 $output = trim($output);
