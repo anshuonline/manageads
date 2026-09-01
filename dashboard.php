@@ -17,6 +17,19 @@ if ($conn->connect_error) {
 
 $message = "";
 
+// Settings logic
+$settings_file = __DIR__ . '/settings.json';
+if (!file_exists($settings_file)) {
+    file_put_contents($settings_file, json_encode(['win_probability' => 45]));
+}
+$settings = json_decode(file_get_contents($settings_file), true);
+
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] === 'update_settings') {
+    $settings['win_probability'] = max(0, min(100, intval($_POST['win_probability'])));
+    file_put_contents($settings_file, json_encode($settings));
+    $message = "Settings updated successfully!";
+}
+
 // Auto-add new player cover ad placeholder if it doesn't exist
 $check = $conn->query("SELECT * FROM ads WHERE placeholder_id = 'player_cover_ad'");
 if ($check && $check->num_rows == 0) {
@@ -519,8 +532,29 @@ if ($is_spin_stats_page) {
             <div class="flex justify-between items-center mb-8">
                 <div>
                     <h1 class="text-3xl font-bold text-white mb-2">Spin Statistics</h1>
-                    <p class="text-gray-400">View history of users who played Spin & Win.</p>
+                    <p class="text-gray-400">View history of users who played Spin & Win, and manage win probability.</p>
                 </div>
+            </div>
+
+            <!-- Settings Panel -->
+            <div class="glass-panel p-8 rounded-2xl mb-8 border border-purple-500/30">
+                <h2 class="text-xl font-bold text-white mb-4"><i class="fas fa-cog mr-2"></i> Game Settings</h2>
+                <form method="POST" class="flex flex-col md:flex-row gap-4 items-end">
+                    <input type="hidden" name="action" value="update_settings">
+                    <div class="flex-1 w-full">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Win Probability (0-100%)</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fas fa-percent text-gray-500"></i>
+                            </div>
+                            <input type="number" name="win_probability" required min="0" max="100" value="<?php echo htmlspecialchars($settings['win_probability'] ?? 45); ?>" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Example: 45 means users have a 45% chance to win G Coins, and 55% chance for "Better Luck Next Time".</p>
+                    </div>
+                    <button type="submit" class="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-colors h-12">
+                        Save Settings
+                    </button>
+                </form>
             </div>
 
             <div class="glass-panel p-8 rounded-2xl overflow-x-auto">

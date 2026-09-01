@@ -76,9 +76,19 @@ if ($action === 'status') {
     $new_spins = (int)$user['spins_left'] - 1;
     $g_coins = (int)$user['g_coins'];
     
-    // 45% G Coins, 55% Better luck next time
+    // Read probability from settings
+    $settings_file = __DIR__ . '/settings.json';
+    $win_probability = 45; // default
+    if (file_exists($settings_file)) {
+        $settings = json_decode(file_get_contents($settings_file), true);
+        if (isset($settings['win_probability'])) {
+            $win_probability = (int)$settings['win_probability'];
+        }
+    }
+    
+    // Dynamic Probability (e.g., 45% G Coins, 55% Better luck next time)
     $rand = rand(1, 100);
-    $win = ($rand <= 45);
+    $win = ($rand <= $win_probability);
     $coins_won = 0;
     
     // Wheel segments based on user image:
