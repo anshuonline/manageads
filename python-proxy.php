@@ -24,7 +24,8 @@ $tmpDir = __DIR__ . '/tmp';
 
 // Build the command: -g gets the direct URL, -f bestaudio gets the best audio stream
 // Execute command directly as an executable, using local TMPDIR to bypass Hostinger /tmp noexec
-$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " -f \"bestaudio[ext=m4a]/bestaudio\" -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
+// Added --client android to bypass YouTube Bot Protection (Sign in to confirm you're not a bot)
+$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --client android -f \"bestaudio[ext=m4a]/bestaudio\" -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
 
 $output = trim($output);
@@ -72,6 +73,7 @@ if (filter_var($output, FILTER_VALIDATE_URL)) {
     ]);
 } else {
     // yt-dlp returned an error message instead of a URL
+    http_response_code(500);
     echo json_encode([
         'error' => 'Extraction failed',
         'details' => $output
