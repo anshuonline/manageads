@@ -168,6 +168,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
     
+    if (isset($_POST['action']) && $_POST['action'] === 'delete_user_spin_logs') {
+        $del_email = $conn->real_escape_string($_POST['user_email']);
+        $stmt = $conn->prepare("DELETE FROM spin_history WHERE user_email = ?");
+        $stmt->bind_param("s", $del_email);
+        if ($stmt->execute()) {
+            $message = "Spin logs deleted successfully for {$del_email}.";
+        } else {
+            $message = "Failed to delete spin logs.";
+        }
+    }
+    
     if (isset($_POST['update_ad'])) {
         $placeholder_id = $conn->real_escape_string($_POST['placeholder_id']);
         $linkUrl = $conn->real_escape_string($_POST['linkUrl'] ?? '');
@@ -315,9 +326,12 @@ $spin_offset = ($spin_page - 1) * $spin_limit;
 $spin_total_pages = 1;
 
 if ($is_spin_stats_page) {
+    $filter_email = isset($_GET['filter_email']) ? $conn->real_escape_string(trim($_GET['filter_email'])) : '';
+    $where_clause = $filter_email ? " WHERE user_email = '{$filter_email}' " : "";
+
     $total_spins = 0;
     $total_g_coins_won = 0;
-    $sumRes = $conn->query("SELECT COUNT(*) as cnt, SUM(g_coins_won) as total_coins FROM spin_history");
+    $sumRes = $conn->query("SELECT COUNT(*) as cnt, SUM(g_coins_won) as total_coins FROM spin_history" . $where_clause);
     if ($sumRes) {
         $row = $sumRes->fetch_assoc();
         $total_rows = $row['cnt'] ?? 0;
@@ -328,7 +342,7 @@ if ($is_spin_stats_page) {
         if ($spin_total_pages < 1) $spin_total_pages = 1;
     }
 
-    $spinResult = $conn->query("SELECT * FROM spin_history ORDER BY spin_time DESC LIMIT $spin_limit OFFSET $spin_offset");
+    $spinResult = $conn->query("SELECT * FROM spin_history" . $where_clause . " ORDER BY spin_time DESC LIMIT $spin_limit OFFSET $spin_offset");
     if ($spinResult) {
         while($row = $spinResult->fetch_assoc()) {
             $spin_stats[] = $row;
@@ -654,7 +668,35 @@ if ($is_spin_stats_page) {
                 });
             </script>
 
-            <div class="glass-panel p-8 rounded-2xl overflow-x-auto">
+            <div class="glass-panel p-8 rounded-2xl overflow-x-auto mb-8">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <form method="GET" class="flex w-full md:w-auto gap-2">
+                        <input type="hidden" name="page" value="spin_stats">
+                        <div class="relative w-full md:w-64">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fas fa-search text-gray-500"></i>
+                            </div>
+                            <input type="email" name="filter_email" value="<?php echo htmlspecialchars($filter_email ?? ''); ?>" placeholder="Filter by email..." class="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                        </div>
+                        <button type="submit" class="bg-white/10 hover:bg-white/20 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                            Filter
+                        </button>
+                        <?php if(!empty($filter_email)): ?>
+                            <a href="?page=spin_stats" class="bg-gray-500/20 hover:bg-gray-500/40 text-gray-300 font-medium py-2 px-4 rounded-lg transition-colors">Clear</a>
+                        <?php endif; ?>
+                    </form>
+                    
+                    <?php if(!empty($filter_email) && count($spin_stats) > 0): ?>
+                        <form method="POST" onsubmit="return confirm('Are you sure you want to delete ALL spin logs for <?php echo htmlspecialchars($filter_email); ?>? This cannot be undone.');">
+                            <input type="hidden" name="action" value="delete_user_spin_logs">
+                            <input type="hidden" name="user_email" value="<?php echo htmlspecialchars($filter_email); ?>">
+                            <button type="submit" class="bg-red-500/20 border border-red-500/50 hover:bg-red-500/40 text-red-400 font-bold py-2 px-4 rounded-lg transition-colors flex items-center">
+                                <i class="fas fa-trash-alt mr-2"></i> Delete Logs for User
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="text-gray-400 border-b border-white/10">
