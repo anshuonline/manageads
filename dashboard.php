@@ -315,9 +315,15 @@ $spin_offset = ($spin_page - 1) * $spin_limit;
 $spin_total_pages = 1;
 
 if ($is_spin_stats_page) {
-    $countRes = $conn->query("SELECT COUNT(*) as cnt FROM spin_history");
-    if ($countRes) {
-        $total_rows = $countRes->fetch_assoc()['cnt'];
+    $total_spins = 0;
+    $total_g_coins_won = 0;
+    $sumRes = $conn->query("SELECT COUNT(*) as cnt, SUM(g_coins_won) as total_coins FROM spin_history");
+    if ($sumRes) {
+        $row = $sumRes->fetch_assoc();
+        $total_rows = $row['cnt'] ?? 0;
+        $total_spins = $total_rows;
+        $total_g_coins_won = $row['total_coins'] ?? 0;
+        
         $spin_total_pages = ceil($total_rows / $spin_limit);
         if ($spin_total_pages < 1) $spin_total_pages = 1;
     }
@@ -554,10 +560,23 @@ if ($is_spin_stats_page) {
             </div>
 
         <?php elseif($is_spin_stats_page): ?>
-            <div class="flex justify-between items-center mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
                     <h1 class="text-3xl font-bold text-white mb-2">Spin Statistics</h1>
                     <p class="text-gray-400">View history of users who played Spin & Win, and manage win probability.</p>
+                </div>
+                <div class="flex items-center space-x-4 bg-white/5 px-6 py-3 rounded-xl border border-white/10">
+                    <div class="text-center">
+                        <div class="text-sm text-gray-400 mb-1">Total Spins</div>
+                        <div class="text-2xl font-bold text-white"><?php echo number_format($total_spins ?? 0); ?></div>
+                    </div>
+                    <div class="w-px h-10 bg-white/10 mx-2"></div>
+                    <div class="text-center">
+                        <div class="text-sm text-gray-400 mb-1">Total G Coins Won</div>
+                        <div class="text-2xl font-bold text-yellow-400 flex items-center justify-center">
+                            <?php echo number_format($total_g_coins_won ?? 0); ?> <i class="fas fa-coins text-lg ml-2"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
 
