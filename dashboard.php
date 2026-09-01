@@ -92,20 +92,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
         
-        if ($_POST['action'] === 'add_spin_chances') {
+        if ($_POST['action'] === 'edit_user_stats') {
             $email = $conn->real_escape_string($_POST['user_email']);
-            $chances = intval($_POST['chances_to_add']);
+            $chances = intval($_POST['spins_left']);
+            $coins = intval($_POST['g_coins']);
             
-            $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = spins_left + ? WHERE email = ?");
-            $stmt->bind_param("is", $chances, $email);
+            $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = ?, g_coins = ? WHERE email = ?");
+            $stmt->bind_param("iis", $chances, $coins, $email);
             if ($stmt->execute()) {
                 if ($stmt->affected_rows > 0) {
-                    $message = "Successfully added $chances spin chances to $email.";
+                    $message = "Successfully updated stats for $email. Spins: $chances, Coins: $coins";
                 } else {
-                    $message = "Error: User with email '$email' not found. They must login to the app first.";
+                    // Check if user exists but values were same, or user doesn't exist
+                    $check = $conn->query("SELECT id FROM user_profiles WHERE email = '$email'");
+                    if ($check && $check->num_rows > 0) {
+                         $message = "Successfully updated stats for $email. (No values changed)";
+                    } else {
+                         $message = "Error: User with email '$email' not found.";
+                    }
                 }
             } else {
-                $message = "Error adding chances.";
+                $message = "Error updating user stats.";
             }
         }
     }
@@ -264,8 +271,20 @@ if ($is_feedback_page) {
 }
 
 $spin_stats = [];
+$spin_page = isset($_GET['p']) ? max(1, (int)$_GET['p']) : 1;
+$spin_limit = 20;
+$spin_offset = ($spin_page - 1) * $spin_limit;
+$spin_total_pages = 1;
+
 if ($is_spin_stats_page) {
-    $spinResult = $conn->query("SELECT * FROM spin_history ORDER BY spin_time DESC");
+    $countRes = $conn->query("SELECT COUNT(*) as cnt FROM spin_history");
+    if ($countRes) {
+        $total_rows = $countRes->fetch_assoc()['cnt'];
+        $spin_total_pages = ceil($total_rows / $spin_limit);
+        if ($spin_total_pages < 1) $spin_total_pages = 1;
+    }
+
+    $spinResult = $conn->query("SELECT * FROM spin_history ORDER BY spin_time DESC LIMIT $spin_limit OFFSET $spin_offset");
     if ($spinResult) {
         while($row = $spinResult->fetch_assoc()) {
             $spin_stats[] = $row;
@@ -510,7 +529,7 @@ if ($is_spin_stats_page) {
                         <tr class="text-gray-400 border-b border-white/10">
                             <th class="py-4 px-4 font-medium">User Email</th>
                             <th class="py-4 px-4 font-medium">Result</th>
-                            <th class="py-4 px-4 font-medium">G Coins Won</th>
+                            <th class="py-4 px-4 font-medium">Prize Won</th>
                             <th class="py-4 px-4 font-medium">Time (IST)</th>
                         </tr>
                     </thead>
@@ -528,13 +547,29 @@ if ($is_spin_stats_page) {
                                             <span class="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-bold uppercase">Lose</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="py-4 px-4 text-yellow-400 font-bold"><?php echo htmlspecialchars($s['g_coins_won']); ?></td>
+                                    <td class="py-4 px-4 font-bold <?php echo $s['result'] === 'win' ? 'text-yellow-400' : 'text-gray-500'; ?>">
+                                        <?php echo $s['result'] === 'win' ? htmlspecialchars($s['g_coins_won']) . ' G Coins' : 'Better Luck Next Time'; ?>
+                                    </td>
                                     <td class="py-4 px-4 text-gray-400 text-sm"><?php echo date('M d, Y h:i A', strtotime($s['spin_time'])); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </tbody>
                 </table>
+                
+                <?php if($spin_total_pages > 1): ?>
+                <div class="mt-6 flex justify-center items-center space-x-2">
+                    <?php if($spin_page > 1): ?>
+                        <a href="?page=spin_stats&p=<?php echo $spin_page - 1; ?>" class="px-3 py-1 bg-white/5 hover:bg-white/10 rounded border border-white/10 text-white transition-colors">&laquo; Prev</a>
+                    <?php endif; ?>
+                    
+                    <span class="text-gray-400 mx-4">Page <?php echo $spin_page; ?> of <?php echo $spin_total_pages; ?></span>
+                    
+                    <?php if($spin_page < $spin_total_pages): ?>
+                        <a href="?page=spin_stats&p=<?php echo $spin_page + 1; ?>" class="px-3 py-1 bg-white/5 hover:bg-white/10 rounded border border-white/10 text-white transition-colors">Next &raquo;</a>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
 
         <?php elseif($is_manage_users_page): ?>
@@ -547,9 +582,9 @@ if ($is_spin_stats_page) {
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="glass-panel p-8 rounded-2xl">
-                    <h2 class="text-xl font-bold text-white mb-6">Grant Spin Chances</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">Edit User Stats</h2>
                     <form method="POST" class="space-y-4">
-                        <input type="hidden" name="action" value="add_spin_chances">
+                        <input type="hidden" name="action" value="edit_user_stats">
                         
                         <div>
                             <label class="block text-sm font-medium text-gray-300 mb-2">User's Gmail Address</label>
@@ -561,18 +596,30 @@ if ($is_spin_stats_page) {
                             </div>
                         </div>
                         
-                        <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">Chances to Add</label>
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <i class="fas fa-gift text-gray-500"></i>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Set Spins Left</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i class="fas fa-gift text-gray-500"></i>
+                                    </div>
+                                    <input type="number" name="spins_left" required min="0" max="999" value="1" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
                                 </div>
-                                <input type="number" name="chances_to_add" required min="1" max="100" value="1" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Set G Coins</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i class="fas fa-coins text-yellow-500"></i>
+                                    </div>
+                                    <input type="number" name="g_coins" required min="0" max="999999" value="0" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+                                </div>
                             </div>
                         </div>
                         
                         <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-colors flex justify-center items-center">
-                            <i class="fas fa-plus-circle mr-2"></i> Add Chances
+                            <i class="fas fa-save mr-2"></i> Update Stats
                         </button>
                     </form>
                 </div>
