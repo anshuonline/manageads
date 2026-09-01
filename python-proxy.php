@@ -23,8 +23,7 @@ if (!file_exists($ytdlp_path)) {
 $tmpDir = __DIR__ . '/tmp';
 
 // Build the command: -g gets the direct URL, -f bestaudio gets the best audio stream
-// Added --extractor-args to bypass YouTube Bot Protection
-$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --extractor-args \"youtube:player_client=android,ios\" -f \"bestaudio[ext=m4a]/bestaudio\" -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
+$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --extractor-args \"youtube:player_client=android,web\" -f 140 -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
 
 $output = trim($output);

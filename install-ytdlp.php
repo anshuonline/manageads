@@ -6,10 +6,14 @@
 
 header('Content-Type: text/plain');
 
-$url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
+$url = 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp_linux';
 $file = __DIR__ . '/yt-dlp';
 
 echo "Starting download from: $url\n";
+
+if (file_exists($file)) {
+    unlink($file); // Force re-download to get nightly build
+}
 
 // Use file_get_contents to download
 $binary = @file_get_contents($url);
