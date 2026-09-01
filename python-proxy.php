@@ -7,6 +7,34 @@
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
+if (isset($_GET['streamUrl'])) {
+    $streamUrl = $_GET['streamUrl'];
+    if (filter_var($streamUrl, FILTER_VALIDATE_URL)) {
+        header('Content-Type: audio/mp4');
+        header('Access-Control-Allow-Origin: *');
+        header('Content-Disposition: attachment; filename="track.m4a"');
+        
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $streamUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($curl, $data) {
+            echo $data;
+            flush();
+            return strlen($data);
+        });
+        curl_exec($ch);
+        curl_close($ch);
+        exit;
+    }
+}
+
 if (!isset($_GET['videoId'])) {
     die(json_encode(['error' => 'No videoId provided']));
 }
@@ -22,8 +50,8 @@ if (!file_exists($ytdlp_path)) {
 
 $tmpDir = __DIR__ . '/tmp';
 
-// Build the command: -g gets the direct URL, -f bestaudio gets the best audio stream
-$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --extractor-args \"youtube:player_client=android,web\" -f 140 -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
+// Build the command: -g gets the direct URL, $client = isset($_GET['testClient']) ? $_GET['testClient'] : 'tv,web';
+$command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --extractor-args \"youtube:player_client=$client\" -f 140 -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
 
 $output = trim($output);
