@@ -20,14 +20,39 @@ $message = "";
 // Settings logic
 $settings_file = __DIR__ . '/settings.json';
 if (!file_exists($settings_file)) {
-    file_put_contents($settings_file, json_encode(['win_probability' => 45]));
+    file_put_contents($settings_file, json_encode([
+        'prob_iphone' => 0,
+        'prob_airpods' => 1,
+        'prob_rs500' => 4,
+        'prob_amazon' => 2,
+        'prob_gcoins' => 43,
+        'prob_betterluck' => 50
+    ]));
 }
 $settings = json_decode(file_get_contents($settings_file), true);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] === 'update_settings') {
-    $settings['win_probability'] = max(0, min(100, intval($_POST['win_probability'])));
-    file_put_contents($settings_file, json_encode($settings));
-    $message = "Settings updated successfully!";
+    $p_iphone = max(0, intval($_POST['prob_iphone'] ?? 0));
+    $p_airpods = max(0, intval($_POST['prob_airpods'] ?? 0));
+    $p_rs500 = max(0, intval($_POST['prob_rs500'] ?? 0));
+    $p_amazon = max(0, intval($_POST['prob_amazon'] ?? 0));
+    $p_gcoins = max(0, intval($_POST['prob_gcoins'] ?? 0));
+    $p_betterluck = max(0, intval($_POST['prob_betterluck'] ?? 0));
+    
+    $total = $p_iphone + $p_airpods + $p_rs500 + $p_amazon + $p_gcoins + $p_betterluck;
+    
+    if ($total === 100) {
+        $settings['prob_iphone'] = $p_iphone;
+        $settings['prob_airpods'] = $p_airpods;
+        $settings['prob_rs500'] = $p_rs500;
+        $settings['prob_amazon'] = $p_amazon;
+        $settings['prob_gcoins'] = $p_gcoins;
+        $settings['prob_betterluck'] = $p_betterluck;
+        file_put_contents($settings_file, json_encode($settings));
+        $message = "Settings updated successfully!";
+    } else {
+        $message = "Error: Probabilities must sum exactly to 100%. Your total was $total%.";
+    }
 }
 
 // Auto-add new player cover ad placeholder if it doesn't exist
@@ -538,24 +563,77 @@ if ($is_spin_stats_page) {
 
             <!-- Settings Panel -->
             <div class="glass-panel p-8 rounded-2xl mb-8 border border-purple-500/30">
-                <h2 class="text-xl font-bold text-white mb-4"><i class="fas fa-cog mr-2"></i> Game Settings</h2>
-                <form method="POST" class="flex flex-col md:flex-row gap-4 items-end">
+                <h2 class="text-xl font-bold text-white mb-4"><i class="fas fa-cog mr-2"></i> Game Settings (Total must be exactly 100%)</h2>
+                <form method="POST" id="probForm" class="space-y-4">
                     <input type="hidden" name="action" value="update_settings">
-                    <div class="flex-1 w-full">
-                        <label class="block text-sm font-medium text-gray-300 mb-2">Win Probability (0-100%)</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <i class="fas fa-percent text-gray-500"></i>
-                            </div>
-                            <input type="number" name="win_probability" required min="0" max="100" value="<?php echo htmlspecialchars($settings['win_probability'] ?? 45); ?>" class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors">
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">iPhone 17 Pro (%)</label>
+                            <input type="number" name="prob_iphone" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_iphone'] ?? 0); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
                         </div>
-                        <p class="text-xs text-gray-500 mt-2">Example: 45 means users have a 45% chance to win G Coins, and 55% chance for "Better Luck Next Time".</p>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">AirPods (%)</label>
+                            <input type="number" name="prob_airpods" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_airpods'] ?? 1); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Rs 500 Gift (%)</label>
+                            <input type="number" name="prob_rs500" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_rs500'] ?? 4); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Rs 1000 Amazon (%)</label>
+                            <input type="number" name="prob_amazon" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_amazon'] ?? 2); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">G Coins (%)</label>
+                            <input type="number" name="prob_gcoins" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_gcoins'] ?? 43); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Better Luck (%)</label>
+                            <input type="number" name="prob_betterluck" required min="0" max="100" value="<?php echo htmlspecialchars($settings['prob_betterluck'] ?? 50); ?>" class="prob-input w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white">
+                        </div>
                     </div>
-                    <button type="submit" class="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-colors h-12">
-                        Save Settings
-                    </button>
+                    
+                    <div class="flex items-center justify-between pt-4">
+                        <div class="text-sm font-bold">
+                            Total: <span id="probTotal" class="text-emerald-400">100</span>%
+                        </div>
+                        <button type="submit" id="saveProbBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition-colors">
+                            Save Settings
+                        </button>
+                    </div>
                 </form>
             </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const inputs = document.querySelectorAll('.prob-input');
+                    const totalSpan = document.getElementById('probTotal');
+                    const saveBtn = document.getElementById('saveProbBtn');
+                    
+                    function calcTotal() {
+                        let sum = 0;
+                        inputs.forEach(input => {
+                            sum += parseInt(input.value) || 0;
+                        });
+                        totalSpan.textContent = sum;
+                        if(sum === 100) {
+                            totalSpan.className = 'text-emerald-400';
+                            saveBtn.disabled = false;
+                            saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        } else {
+                            totalSpan.className = 'text-red-400';
+                            saveBtn.disabled = true;
+                            saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        }
+                    }
+                    
+                    inputs.forEach(input => {
+                        input.addEventListener('input', calcTotal);
+                    });
+                    calcTotal();
+                });
+            </script>
 
             <div class="glass-panel p-8 rounded-2xl overflow-x-auto">
                 <table class="w-full text-left border-collapse">

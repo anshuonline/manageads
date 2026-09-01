@@ -78,37 +78,73 @@ if ($action === 'status') {
     
     // Read probability from settings
     $settings_file = __DIR__ . '/settings.json';
-    $win_probability = 45; // default
+    $prob = [
+        'iphone' => 0,
+        'airpods' => 1,
+        'rs500' => 4,
+        'amazon' => 2,
+        'gcoins' => 43,
+        'betterluck' => 50
+    ];
     if (file_exists($settings_file)) {
         $settings = json_decode(file_get_contents($settings_file), true);
-        if (isset($settings['win_probability'])) {
-            $win_probability = (int)$settings['win_probability'];
-        }
+        if (isset($settings['prob_iphone'])) $prob['iphone'] = (int)$settings['prob_iphone'];
+        if (isset($settings['prob_airpods'])) $prob['airpods'] = (int)$settings['prob_airpods'];
+        if (isset($settings['prob_rs500'])) $prob['rs500'] = (int)$settings['prob_rs500'];
+        if (isset($settings['prob_amazon'])) $prob['amazon'] = (int)$settings['prob_amazon'];
+        if (isset($settings['prob_gcoins'])) $prob['gcoins'] = (int)$settings['prob_gcoins'];
+        if (isset($settings['prob_betterluck'])) $prob['betterluck'] = (int)$settings['prob_betterluck'];
     }
     
-    // Dynamic Probability (e.g., 45% G Coins, 55% Better luck next time)
-    $rand = rand(1, 100);
-    $win = ($rand <= $win_probability);
+    // Ensure total is at least 1 to avoid division by zero
+    $total_weight = array_sum($prob);
+    if ($total_weight <= 0) {
+        $prob['betterluck'] = 100;
+        $total_weight = 100;
+    }
+    
+    // Pick a random number between 1 and total_weight
+    $rand = rand(1, $total_weight);
+    $segment = 5; // default to better luck
+    $resultStr = "better_luck";
+    $item_name = "";
     $coins_won = 0;
     
-    // Wheel segments based on user image:
-    // Segments: 
-    // 0 = G Coins
-    // 1 = Better luck next time
+    $cumulative = 0;
+    
+    // Segments Mapping:
+    // 0 = iPhone 17 Pro
+    // 1 = AirPods
     // 2 = Rs 500 Gift Card
     // 3 = Rs 1000 Amazon
-    // 4 = iPhone 17 Pro
-    // 5 = AirPods
-    // We will just force landing on 0 or 1.
-    // 0 (G Coins) = win
-    // 1 (Better luck next time) = lose
+    // 4 = G Coins
+    // 5 = Better Luck Next Time
     
-    if ($win) {
-        $coins_won = rand(10, 50);
-        $g_coins += $coins_won;
-        $segment = 0;
+    $cumulative += $prob['iphone'];
+    if ($rand <= $cumulative) {
+        $segment = 0; $resultStr = "win_item"; $item_name = "iPhone 17 Pro";
     } else {
-        $segment = 1;
+        $cumulative += $prob['airpods'];
+        if ($rand <= $cumulative) {
+            $segment = 1; $resultStr = "win_item"; $item_name = "AirPods";
+        } else {
+            $cumulative += $prob['rs500'];
+            if ($rand <= $cumulative) {
+                $segment = 2; $resultStr = "win_item"; $item_name = "Rs 500 Gift Card";
+            } else {
+                $cumulative += $prob['amazon'];
+                if ($rand <= $cumulative) {
+                    $segment = 3; $resultStr = "win_item"; $item_name = "Rs 1000 Amazon Voucher";
+                } else {
+                    $cumulative += $prob['gcoins'];
+                    if ($rand <= $cumulative) {
+                        $segment = 4; $resultStr = "win_coins"; $coins_won = rand(10, 50); $g_coins += $coins_won;
+                    } else {
+                        $segment = 5; $resultStr = "lose";
+                    }
+                }
+            }
+        }
     }
     
     $stmt = $conn->prepare("UPDATE user_profiles SET spins_left = ?, g_coins = ? WHERE email = ?");
@@ -116,14 +152,16 @@ if ($action === 'status') {
     $stmt->execute();
     
     // Log history
-    $resultStr = $win ? "win" : "lose";
     $hist_stmt = $conn->prepare("INSERT INTO spin_history (user_email, result, g_coins_won) VALUES (?, ?, ?)");
-    $hist_stmt->bind_param("ssi", $user['email'], $resultStr, $coins_won);
+    // For items, we will store the item_name in the result column as 'win: Item Name' to save creating a new column
+    $db_result = $resultStr === "win_item" ? "win: " . $item_name : ($resultStr === "win_coins" ? "win" : "lose");
+    $hist_stmt->bind_param("ssi", $user['email'], $db_result, $coins_won);
     $hist_stmt->execute();
     
     echo json_encode([
         "status" => "success",
         "result" => $resultStr,
+        "item_name" => $item_name,
         "coins_won" => $coins_won,
         "segment" => $segment,
         "g_coins" => $g_coins,
