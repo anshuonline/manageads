@@ -67,14 +67,26 @@ if ($action === 'status') {
         "spins_left" => (int)$user['spins_left']
     ]);
 } elseif ($action === 'spin' && $_SERVER['REQUEST_METHOD'] == 'POST') {
-    if ((int)$user['spins_left'] <= 0) {
-        echo json_encode(["status" => "error", "message" => "No spins left"]);
-        exit;
-    }
-    
-    // Deduct 1 spin
-    $new_spins = (int)$user['spins_left'] - 1;
+    $use_coins = isset($input['use_coins']) ? $input['use_coins'] : false;
     $g_coins = (int)$user['g_coins'];
+    $new_spins = (int)$user['spins_left'];
+    
+    if ($new_spins <= 0) {
+        if ($use_coins) {
+            if ($g_coins < 20) {
+                echo json_encode(["status" => "error", "message" => "Not enough G Coins. You need 20 coins for an extra spin."]);
+                exit;
+            }
+            // Deduct 20 coins
+            $g_coins -= 20;
+        } else {
+            echo json_encode(["status" => "error", "message" => "No spins left"]);
+            exit;
+        }
+    } else {
+        // Deduct 1 free spin
+        $new_spins -= 1;
+    }
     
     // Read probability from settings
     $settings_file = __DIR__ . '/settings.json';
