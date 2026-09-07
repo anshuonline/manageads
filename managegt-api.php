@@ -98,15 +98,29 @@ if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $location = $conn->real_escape_string($location);
 
-    // Make sure column exists (lazy migration just in case it wasn't added manually)
-    $conn->query("ALTER TABLE user_feedback ADD COLUMN location VARCHAR(255) DEFAULT 'Unknown'");
+    // Make sure table and column exist, but suppress exceptions if they already do (PHP 8.1+ throws fatal exceptions on SQL errors)
+    try {
+        $conn->query("CREATE TABLE IF NOT EXISTS user_feedback (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            rating INT DEFAULT 0,
+            suggestion TEXT,
+            user_name VARCHAR(255) DEFAULT 'Guest',
+            location VARCHAR(255) DEFAULT 'Unknown',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        
+        $conn->query("ALTER TABLE user_feedback CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $conn->query("ALTER TABLE user_feedback ADD COLUMN location VARCHAR(255) DEFAULT 'Unknown'");
+    } catch (Exception $e) {
+        // Ignore errors if table/column already exists
+    }
 
     $sql = "INSERT INTO user_feedback (rating, suggestion, user_name, location) VALUES ($rating, '$suggestion', '$user_name', '$location')";
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Feedback saved successfully"]);
     } else {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to save feedback"]);
+        echo json_encode(["status" => "error", "message" => "Failed to save feedback", "sql_error" => $conn->error]);
     }
     exit();
 }
