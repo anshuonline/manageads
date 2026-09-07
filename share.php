@@ -76,8 +76,8 @@ if (!$v) {
     exit;
 }
 
-$title = "GanaTube";
-$description = "Listen to ad-free music on GanaTube";
+$title = "Music";
+$description = "Listen on GanaTube";
 $target_url = "https://ganatube.in/?play=" . urlencode($v);
 $image_url = "https://manageads.ganatube.in/share.php?thumb=" . urlencode($v);
 
@@ -88,8 +88,9 @@ $res = @file_get_contents($oembed_url, false, $context);
 if ($res) {
     $data = json_decode($res, true);
     if (!empty($data) && isset($data['title'])) {
-        $title = $data['title'] . " - GanaTube";
-        $description = "Listen to " . $data['title'] . " by " . $data['author_name'] . " on GanaTube. Ad-free music streaming.";
+        $title = $data['title'];
+        $author = str_replace(' - Topic', '', $data['author_name']);
+        $description = $author;
     }
 }
 ?>
