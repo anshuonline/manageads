@@ -7,15 +7,15 @@ $thumb = $_GET['thumb'] ?? '';
 
 // Handle Thumbnail Generation with Play Icon
 if ($thumb) {
-    $proxy_url = "http://localhost:3000/yt-search?q=" . urlencode($thumb) . "&limit=1";
+    $oembed_url = "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" . urlencode($thumb) . "&format=json";
     $context = stream_context_create(['http' => ['timeout' => 3]]);
-    $res = @file_get_contents($proxy_url, false, $context);
+    $res = @file_get_contents($oembed_url, false, $context);
     
     $bg_url = "https://ui-avatars.com/api/?name=Gana+Tube&background=000&color=fff&size=500";
     if ($res) {
         $data = json_decode($res, true);
-        if (!empty($data) && isset($data[0])) {
-            $bg_url = $data[0]['thumbnailHigh'] ?? ($data[0]['thumbnail'] ?? $bg_url);
+        if (!empty($data) && isset($data['thumbnail_url'])) {
+            $bg_url = $data['thumbnail_url'];
             // YouTube HQ thumbnail replacement for better quality if possible
             if (strpos($bg_url, 'hqdefault.jpg') !== false) {
                 $bg_url = str_replace('hqdefault.jpg', 'maxresdefault.jpg', $bg_url);
@@ -81,15 +81,15 @@ $description = "Listen to ad-free music on GanaTube";
 $target_url = "https://ganatube.in/?play=" . urlencode($v);
 $image_url = "https://manageads.ganatube.in/share.php?thumb=" . urlencode($v);
 
-// Fetch song details for OG tags
-$proxy_url = "http://localhost:3000/yt-search?q=" . urlencode($v) . "&limit=1";
+// Fetch song details for OG tags using YouTube oEmbed (Reliable & fast)
+$oembed_url = "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" . urlencode($v) . "&format=json";
 $context = stream_context_create(['http' => ['timeout' => 3]]);
-$res = @file_get_contents($proxy_url, false, $context);
+$res = @file_get_contents($oembed_url, false, $context);
 if ($res) {
     $data = json_decode($res, true);
-    if (!empty($data) && isset($data[0])) {
-        $title = $data[0]['title'] . " - GanaTube";
-        $description = "Listen to " . $data[0]['title'] . " by " . $data[0]['channelTitle'] . " on GanaTube. Ad-free music streaming.";
+    if (!empty($data) && isset($data['title'])) {
+        $title = $data['title'] . " - GanaTube";
+        $description = "Listen to " . $data['title'] . " by " . $data['author_name'] . " on GanaTube. Ad-free music streaming.";
     }
 }
 ?>
