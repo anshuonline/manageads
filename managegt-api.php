@@ -71,6 +71,35 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+if ($action === 'get_discovery') {
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'discovery_songs'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'];
+    } else {
+        echo json_encode([]);
+    }
+    exit();
+}
+
+if ($action === 'save_discovery' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['discoveryData'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid payload"]);
+        exit();
+    }
+    $json_data = $conn->real_escape_string(json_encode($data['discoveryData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('discovery_songs', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Discovery songs updated!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to write discovery songs to database."]);
+    }
+    exit();
+}
+
 if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $rating = (int)($data['rating'] ?? 0);
     $suggestion = $conn->real_escape_string($data['suggestion'] ?? '');
