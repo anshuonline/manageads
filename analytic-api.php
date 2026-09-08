@@ -81,20 +81,13 @@ elseif ($action === 'recordTime') {
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? '';
     
-    // Create settings table if not exists
-    $conn->query("CREATE TABLE IF NOT EXISTS admin_settings (
-        setting_key VARCHAR(50) PRIMARY KEY,
-        setting_value VARCHAR(255) NOT NULL
-    )");
-    
-    // Seed default password if empty
-    $conn->query("INSERT IGNORE INTO admin_settings (setting_key, setting_value) VALUES ('admin_password', 'a9a6d713c72719a77196cbcd4ef7bb29')");
-    
-    // Get stored password hash
-    $res = $conn->query("SELECT setting_value FROM admin_settings WHERE setting_key = 'admin_password'");
-    $stored_hash = 'a9a6d713c72719a77196cbcd4ef7bb29'; // fallback
+    // Get stored password hash from existing admin_settings table
+    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
+    $stored_hash = 'a9a6d713c72719a77196cbcd4ef7bb29'; // fallback to gtanalytic2026 if table is empty
     if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['setting_value'];
+        if (!empty($row['password_hash'])) {
+            $stored_hash = $row['password_hash'];
+        }
     }
     
     // Validate password
