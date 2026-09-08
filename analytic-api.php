@@ -81,17 +81,18 @@ elseif ($action === 'recordTime') {
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? '';
     
-    // Get stored password hash from existing admin_settings table
+    // Use same admin password from admin_settings table (shared with managegt)
     $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $stored_hash = 'a9a6d713c72719a77196cbcd4ef7bb29'; // fallback to gtanalytic2026 if table is empty
+    $authorized = false;
     if ($res && $row = $res->fetch_assoc()) {
-        if (!empty($row['password_hash'])) {
-            $stored_hash = $row['password_hash'];
+        $stored_hash = $row['password_hash'];
+        // Check: md5(input) === stored_hash OR input === stored_hash (if user sends pre-hashed)
+        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
+            $authorized = true;
         }
     }
     
-    // Validate password
-    if (md5($pwd) !== $stored_hash) {
+    if (!$authorized) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
     }
