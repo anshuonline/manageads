@@ -81,10 +81,24 @@ elseif ($action === 'recordTime') {
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? '';
     
-    // MD5 Password check
-    // The user didn't specify the password, so I'll set default to "gtanalytic2026"
-    // md5("gtanalytic2026") = a9a6d713c72719a77196cbcd4ef7bb29
-    if (md5($pwd) !== 'a9a6d713c72719a77196cbcd4ef7bb29') {
+    // Create settings table if not exists
+    $conn->query("CREATE TABLE IF NOT EXISTS admin_settings (
+        setting_key VARCHAR(50) PRIMARY KEY,
+        setting_value VARCHAR(255) NOT NULL
+    )");
+    
+    // Seed default password if empty
+    $conn->query("INSERT IGNORE INTO admin_settings (setting_key, setting_value) VALUES ('admin_password', 'a9a6d713c72719a77196cbcd4ef7bb29')");
+    
+    // Get stored password hash
+    $res = $conn->query("SELECT setting_value FROM admin_settings WHERE setting_key = 'admin_password'");
+    $stored_hash = 'a9a6d713c72719a77196cbcd4ef7bb29'; // fallback
+    if ($res && $row = $res->fetch_assoc()) {
+        $stored_hash = $row['setting_value'];
+    }
+    
+    // Validate password
+    if (md5($pwd) !== $stored_hash) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
     }
