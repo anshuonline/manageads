@@ -102,10 +102,14 @@ elseif ($action === 'getAnalytics') {
         'most_liked' => [],
         'most_shared' => [],
         'top_users' => [],
+        'detailed_users' => [],
+        'user_growth' => [],
         'summary' => [
             'total_plays' => 0,
             'total_likes' => 0,
-            'total_time_seconds' => 0
+            'total_time_seconds' => 0,
+            'total_users' => 0,
+            'daily_active_users' => 0
         ]
     ];
     
@@ -129,6 +133,22 @@ elseif ($action === 'getAnalytics') {
     $res = $conn->query("SELECT email, display_name, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 100");
     $analytics['detailed_users'] = [];
     if ($res) while($row = $res->fetch_assoc()) $analytics['detailed_users'][] = $row;
+    
+    // Get User Growth (Signups per day)
+    $res = $conn->query("SELECT DATE(created_at) as join_date, COUNT(*) as new_users FROM user_profiles GROUP BY DATE(created_at) ORDER BY join_date ASC");
+    if ($res) while($row = $res->fetch_assoc()) $analytics['user_growth'][] = $row;
+    
+    // Get Total Users
+    $res = $conn->query("SELECT COUNT(*) as total FROM user_profiles");
+    if ($res && $row = $res->fetch_assoc()) {
+        $analytics['summary']['total_users'] = (int)$row['total'];
+    }
+    
+    // Get Daily Active Users (Updated in the last 24 hours)
+    $res = $conn->query("SELECT COUNT(*) as active_today FROM user_profiles WHERE updated_at >= NOW() - INTERVAL 1 DAY");
+    if ($res && $row = $res->fetch_assoc()) {
+        $analytics['summary']['daily_active_users'] = (int)$row['active_today'];
+    }
     
     // Get Summary Totals
     $res = $conn->query("SELECT SUM(play_count) as total_plays FROM song_analytics");
