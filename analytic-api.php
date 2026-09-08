@@ -110,27 +110,42 @@ elseif ($action === 'getAnalytics') {
     ];
     
     // Get Most Played
-    $res = $conn->query("SELECT * FROM song_analytics ORDER BY play_count DESC LIMIT 10");
+    $res = $conn->query("SELECT * FROM song_analytics ORDER BY play_count DESC LIMIT 50");
     if ($res) while($row = $res->fetch_assoc()) $analytics['most_played'][] = $row;
     
     // Get Most Liked
-    $res = $conn->query("SELECT * FROM song_analytics ORDER BY like_count DESC LIMIT 10");
+    $res = $conn->query("SELECT * FROM song_analytics ORDER BY like_count DESC LIMIT 50");
     if ($res) while($row = $res->fetch_assoc()) $analytics['most_liked'][] = $row;
     
     // Get Most Shared
-    $res = $conn->query("SELECT * FROM song_analytics ORDER BY share_count DESC LIMIT 10");
+    $res = $conn->query("SELECT * FROM song_analytics ORDER BY share_count DESC LIMIT 50");
     if ($res) while($row = $res->fetch_assoc()) $analytics['most_shared'][] = $row;
     
     // Get Top Users
-    $res = $conn->query("SELECT * FROM user_analytics ORDER BY total_time_spent_seconds DESC LIMIT 10");
+    $res = $conn->query("SELECT * FROM user_analytics ORDER BY total_time_spent_seconds DESC LIMIT 100");
     if ($res) while($row = $res->fetch_assoc()) $analytics['top_users'][] = $row;
     
+    // Get Complete User Profiles Details for Detailed Display
+    $res = $conn->query("SELECT email, display_name, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 100");
+    $analytics['detailed_users'] = [];
+    if ($res) while($row = $res->fetch_assoc()) $analytics['detailed_users'][] = $row;
+    
     // Get Summary Totals
-    $res = $conn->query("SELECT SUM(play_count) as total_plays, SUM(like_count) as total_likes FROM song_analytics");
+    $res = $conn->query("SELECT SUM(play_count) as total_plays FROM song_analytics");
     if ($res && $row = $res->fetch_assoc()) {
         $analytics['summary']['total_plays'] = (int)$row['total_plays'];
-        $analytics['summary']['total_likes'] = (int)$row['total_likes'];
     }
+    
+    // Live Total Likes calculation from user_profiles (Optimized calculation)
+    // We sum the length of the JSON array stored in 'liked_songs' column
+    $res = $conn->query("SELECT SUM(JSON_LENGTH(liked_songs)) as total_likes FROM user_profiles WHERE liked_songs IS NOT NULL AND liked_songs != 'null' AND liked_songs != '[]'");
+    if ($res && $row = $res->fetch_assoc()) {
+        $analytics['summary']['total_likes'] = (int)$row['total_likes'];
+    } else {
+        // Fallback
+        $analytics['summary']['total_likes'] = 0;
+    }
+    
     $res = $conn->query("SELECT SUM(total_time_spent_seconds) as total_time FROM user_analytics");
     if ($res && $row = $res->fetch_assoc()) {
         $analytics['summary']['total_time_seconds'] = (int)$row['total_time'];
