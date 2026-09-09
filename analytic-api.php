@@ -106,6 +106,19 @@ elseif ($action === 'recordTime') {
     echo json_encode(['status' => 'success']);
 }
 
+elseif ($action === 'getTop100Songs') {
+    // Public endpoint for top 100 most played songs (used by discovery page)
+    $res = $conn->query("SELECT video_id, title, thumbnail, play_count FROM song_analytics ORDER BY play_count DESC LIMIT 100");
+    $top_songs = [];
+    if ($res) {
+        while($row = $res->fetch_assoc()) {
+            $top_songs[] = $row;
+        }
+    }
+    echo json_encode(['status' => 'success', 'data' => $top_songs]);
+    exit();
+}
+
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? '';
     
