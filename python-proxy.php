@@ -50,7 +50,8 @@ if (!file_exists($ytdlp_path)) {
 
 $tmpDir = __DIR__ . '/tmp';
 
-// Build the command: -g gets the direct URL, $client = isset($_GET['testClient']) ? $_GET['testClient'] : 'tv,web';
+// Build the command: -g gets the direct URL
+$client = isset($_GET['testClient']) ? $_GET['testClient'] : 'tv,web';
 $command = "export TMPDIR=" . escapeshellarg($tmpDir) . " && " . escapeshellarg($ytdlp_path) . " --extractor-args \"youtube:player_client=$client\" -f 140 -g --no-warnings --quiet " . escapeshellarg($url) . " 2>&1";
 $output = shell_exec($command);
 
