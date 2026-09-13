@@ -119,6 +119,21 @@ elseif ($action === 'getTop100Songs') {
     exit();
 }
 
+elseif ($action === 'validatePwd') {
+    // Lightweight admin password validation (shared with managegt / room analytics)
+    $pwd = $_GET['pwd'] ?? '';
+    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
+    $authorized = false;
+    if ($res && $row = $res->fetch_assoc()) {
+        $stored_hash = $row['password_hash'];
+        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
+            $authorized = true;
+        }
+    }
+    echo json_encode(['status' => $authorized ? 'success' : 'error']);
+    exit();
+}
+
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? '';
     
