@@ -66,7 +66,35 @@ if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(["status" => "success", "message" => "Sections updated successfully!"]);
     } else {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "Failed to write sections to database."]);
+        echo json_encode(["status" => "error", "message" => "Database error"]);
+    }
+    exit();
+}
+
+if ($action === 'get_roombots') {
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'roombots_config'");
+    if ($res->num_rows > 0) {
+        echo $res->fetch_assoc()['setting_value'];
+    } else {
+        echo json_encode([]);
+    }
+    exit();
+}
+
+if ($action === 'save_roombots' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['roombotsData'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid payload"]);
+        exit();
+    }
+    $json_data = $conn->real_escape_string(json_encode($data['roombotsData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('roombots_config', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "RoomBots config updated successfully!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Database error"]);
     }
     exit();
 }
