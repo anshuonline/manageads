@@ -40,6 +40,13 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+// ── App Settings (sections, popups, header, etc.) ──────────────────────────
+// Created defensively so fresh deployments never fail on save
+$conn->query("CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key VARCHAR(100) PRIMARY KEY,
+    setting_value LONGTEXT
+)");
+
 // ── Sections ────────────────────────────────────────────────────────────────
 
 if ($action === 'get_sections') {
@@ -240,6 +247,37 @@ if ($action === 'save_header' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => "Failed to write header to database."]);
+    }
+    exit();
+}
+
+// ── Custom Popups ─────────────────────────────────────────────────────────────
+
+if ($action === 'get_popups') {
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_popups'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'];
+    } else {
+        echo json_encode(new stdClass());
+    }
+    exit();
+}
+
+if ($action === 'save_popups' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['popupsData'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid payload — missing popupsData"]);
+        exit();
+    }
+    $json_data = $conn->real_escape_string(json_encode($data['popupsData']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_popups', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Popups saved successfully!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to write popups to database."]);
     }
     exit();
 }
