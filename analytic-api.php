@@ -85,6 +85,7 @@ if (!$schema_check || $schema_check->num_rows === 0) {
         country_code VARCHAR(10) DEFAULT '',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
+    @$conn->query("ALTER TABLE guest_analytics ADD INDEX idx_guest_ip (ip_address)");
     @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('guest_schema_v2', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
 }
 
@@ -100,6 +101,88 @@ function getClientIP() {
         }
     }
     return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+}
+
+// Helper to batch resolve IP locations via cache and fast fallback
+function resolveIPsLocations(array $ips, $conn, $limit = 5) {
+    if (empty($ips)) return [];
+    
+    $validIps = [];
+    foreach ($ips as $ip) {
+        $ip = trim($ip);
+        if ($ip && filter_var($ip, FILTER_VALIDATE_IP)) {
+            $validIps[$ip] = true;
+        }
+    }
+    if (empty($validIps)) return [];
+
+    $ipKeys = array_keys($validIps);
+    $escaped = array_map(function($i) use ($conn) { return "'" . $conn->real_escape_string($i) . "'"; }, $ipKeys);
+    $inClause = implode(',', $escaped);
+
+    $cached = [];
+    $res = $conn->query("SELECT * FROM ip_cache WHERE ip IN ($inClause)");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $locParts = array_filter([$row['city'], $row['region'], $row['country']]);
+            $locStr = implode(', ', $locParts);
+            $cached[$row['ip']] = [
+                'city' => $row['city'],
+                'region' => $row['region'],
+                'country' => $row['country'],
+                'country_code' => $row['country_code'],
+                'location' => $locStr ?: 'Unknown'
+            ];
+        }
+    }
+
+    $uncached = [];
+    foreach ($ipKeys as $ip) {
+        if (!isset($cached[$ip])) {
+            if ($ip === '127.0.0.1' || $ip === '::1' || strpos($ip, '192.168.') === 0 || strpos($ip, '10.') === 0) {
+                $cached[$ip] = [
+                    'city' => 'Localhost',
+                    'region' => '',
+                    'country' => 'Local Network',
+                    'country_code' => 'LOCAL',
+                    'location' => 'Localhost / Internal'
+                ];
+            } else {
+                $uncached[] = $ip;
+            }
+        }
+    }
+
+    // Fast resolution for uncached IPs (1s timeout)
+    $count = 0;
+    foreach ($uncached as $ip) {
+        if ($count >= $limit) break;
+        $count++;
+        $ctx = stream_context_create(['http' => ['timeout' => 1.0]]);
+        $apiRes = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,country,regionName,city,countryCode", false, $ctx);
+        if ($apiRes) {
+            $data = json_decode($apiRes, true);
+            if ($data && ($data['status'] ?? '') === 'success') {
+                $city = $conn->real_escape_string($data['city'] ?? '');
+                $region = $conn->real_escape_string($data['regionName'] ?? '');
+                $country = $conn->real_escape_string($data['country'] ?? '');
+                $code = $conn->real_escape_string($data['countryCode'] ?? '');
+                
+                $conn->query("INSERT INTO ip_cache (ip, city, region, country, country_code) VALUES ('$ip', '$city', '$region', '$country', '$code') ON DUPLICATE KEY UPDATE city = VALUES(city), region = VALUES(region), country = VALUES(country), country_code = VALUES(country_code)");
+                
+                $locParts = array_filter([$data['city'] ?? '', $data['regionName'] ?? '', $data['country'] ?? '']);
+                $cached[$ip] = [
+                    'city' => $data['city'] ?? '',
+                    'region' => $data['regionName'] ?? '',
+                    'country' => $data['country'] ?? '',
+                    'country_code' => $data['countryCode'] ?? '',
+                    'location' => implode(', ', $locParts) ?: 'Unknown'
+                ];
+            }
+        }
+    }
+
+    return $cached;
 }
 
 if ($action === 'recordPlay') {
@@ -393,89 +476,6 @@ elseif ($action === 'getAnalytics') {
     $res = $conn->query($guest_songs_q);
     if ($res) while($row = $res->fetch_assoc()) $analytics['guest_top_songs'][] = $row;
 
-    // Helper to batch resolve IP locations via cache and fast fallback
-    function resolveIPsLocations(array $ips, $conn) {
-        if (empty($ips)) return [];
-        
-        $validIps = [];
-        foreach ($ips as $ip) {
-            $ip = trim($ip);
-            if ($ip && filter_var($ip, FILTER_VALIDATE_IP)) {
-                $validIps[$ip] = true;
-            }
-        }
-        if (empty($validIps)) return [];
-
-        $ipKeys = array_keys($validIps);
-        $escaped = array_map(function($i) use ($conn) { return "'" . $conn->real_escape_string($i) . "'"; }, $ipKeys);
-        $inClause = implode(',', $escaped);
-
-        $cached = [];
-        $res = $conn->query("SELECT * FROM ip_cache WHERE ip IN ($inClause)");
-        if ($res) {
-            while ($row = $res->fetch_assoc()) {
-                $locParts = array_filter([$row['city'], $row['region'], $row['country']]);
-                $locStr = implode(', ', $locParts);
-                $cached[$row['ip']] = [
-                    'city' => $row['city'],
-                    'region' => $row['region'],
-                    'country' => $row['country'],
-                    'country_code' => $row['country_code'],
-                    'location' => $locStr ?: 'Unknown'
-                ];
-            }
-        }
-
-        $uncached = [];
-        foreach ($ipKeys as $ip) {
-            if (!isset($cached[$ip])) {
-                if ($ip === '127.0.0.1' || $ip === '::1' || strpos($ip, '192.168.') === 0 || strpos($ip, '10.') === 0) {
-                    $cached[$ip] = [
-                        'city' => 'Localhost',
-                        'region' => '',
-                        'country' => 'Local Network',
-                        'country_code' => 'LOCAL',
-                        'location' => 'Localhost / Internal'
-                    ];
-                } else {
-                    $uncached[] = $ip;
-                }
-            }
-        }
-
-        // Fast resolution for up to 5 uncached IPs per request (1s timeout)
-        $limit = 5;
-        $count = 0;
-        foreach ($uncached as $ip) {
-            if ($count >= $limit) break;
-            $count++;
-            $ctx = stream_context_create(['http' => ['timeout' => 1.0]]);
-            $apiRes = @file_get_contents("http://ip-api.com/json/{$ip}?fields=status,country,regionName,city,countryCode", false, $ctx);
-            if ($apiRes) {
-                $data = json_decode($apiRes, true);
-                if ($data && ($data['status'] ?? '') === 'success') {
-                    $city = $conn->real_escape_string($data['city'] ?? '');
-                    $region = $conn->real_escape_string($data['regionName'] ?? '');
-                    $country = $conn->real_escape_string($data['country'] ?? '');
-                    $code = $conn->real_escape_string($data['countryCode'] ?? '');
-                    
-                    $conn->query("INSERT INTO ip_cache (ip, city, region, country, country_code) VALUES ('$ip', '$city', '$region', '$country', '$code') ON DUPLICATE KEY UPDATE city = VALUES(city), region = VALUES(region), country = VALUES(country), country_code = VALUES(country_code)");
-                    
-                    $locParts = array_filter([$data['city'] ?? '', $data['regionName'] ?? '', $data['country'] ?? '']);
-                    $cached[$ip] = [
-                        'city' => $data['city'] ?? '',
-                        'region' => $data['regionName'] ?? '',
-                        'country' => $data['country'] ?? '',
-                        'country_code' => $data['countryCode'] ?? '',
-                        'location' => implode(', ', $locParts) ?: 'Unknown'
-                    ];
-                }
-            }
-        }
-
-        return $cached;
-    }
-
     // Recent Active Guests
     $analytics['recent_guests'] = [];
     $allIps = [];
@@ -517,6 +517,121 @@ elseif ($action === 'getAnalytics') {
     unset($og);
 
     echo json_encode(['status' => 'success', 'data' => $analytics]);
+}
+
+elseif ($action === 'getGuestGeography') {
+    $pwd = $_GET['pwd'] ?? '';
+    
+    // Auth check using admin_settings table (shared with managegt)
+    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
+    $authorized = false;
+    if ($res && $row = $res->fetch_assoc()) {
+        $stored_hash = $row['password_hash'];
+        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
+            $authorized = true;
+        }
+    }
+    if (!$authorized) returnError("Unauthorized");
+
+    $range = $_GET['range'] ?? 'dau'; // 'dau', 'wau', 'mau', 'yau', 'all'
+    
+    switch ($range) {
+        case 'dau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 1 DAY";
+            $rangeLabel = "Daily Active (Last 24 Hours)";
+            break;
+        case 'wau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 7 DAY";
+            $rangeLabel = "Weekly Active (Last 7 Days)";
+            break;
+        case 'mau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 30 DAY";
+            $rangeLabel = "Monthly Active (Last 30 Days)";
+            break;
+        case 'yau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 1 YEAR";
+            $rangeLabel = "Yearly Active (Last 365 Days)";
+            break;
+        case 'all':
+        default:
+            $range = 'all';
+            $whereClause = "1=1";
+            $rangeLabel = "All-Time Active";
+            break;
+    }
+
+    // Step 1: Pre-resolve up to 8 uncached IPs for this range so geo cache is populated
+    $uRes = $conn->query("SELECT DISTINCT g.ip_address FROM guest_analytics g LEFT JOIN ip_cache c ON g.ip_address = c.ip WHERE g.ip_address != '' AND c.ip IS NULL AND $whereClause LIMIT 8");
+    $uncachedIps = [];
+    if ($uRes) {
+        while ($uRow = $uRes->fetch_assoc()) {
+            $uncachedIps[] = $uRow['ip_address'];
+        }
+    }
+    if (!empty($uncachedIps)) {
+        resolveIPsLocations($uncachedIps, $conn, 8);
+    }
+
+    // Step 2: Total Active Audience in this range
+    $totalSql = "SELECT COUNT(DISTINCT g.guest_id) as total_guests, COALESCE(SUM(g.total_plays), 0) as total_plays, COALESCE(SUM(g.total_time_seconds), 0) as total_time_seconds FROM guest_analytics g WHERE $whereClause";
+    $totalRes = $conn->query($totalSql);
+    $totalRow = $totalRes ? $totalRes->fetch_assoc() : null;
+    $totalGuests = (int)($totalRow['total_guests'] ?? 0);
+    $totalPlays = (int)($totalRow['total_plays'] ?? 0);
+    $totalTimeSeconds = (int)($totalRow['total_time_seconds'] ?? 0);
+
+    // Step 3: Top 50 Locations (City / State / Country)
+    $geoSql = "SELECT 
+        COALESCE(NULLIF(c.country, ''), 'Unknown') AS country,
+        COALESCE(c.country_code, '') AS country_code,
+        COALESCE(NULLIF(c.city, ''), 'Unknown') AS city,
+        COALESCE(c.region, '') AS region,
+        COUNT(DISTINCT g.guest_id) AS active_guests,
+        COALESCE(SUM(g.total_plays), 0) AS total_plays,
+        COALESCE(SUM(g.total_time_seconds), 0) AS total_time_seconds
+    FROM guest_analytics g
+    LEFT JOIN ip_cache c ON g.ip_address = c.ip
+    WHERE $whereClause
+    GROUP BY country, country_code, city, region
+    ORDER BY active_guests DESC, total_plays DESC
+    LIMIT 50";
+
+    $geoRes = $conn->query($geoSql);
+    $locations = [];
+    $rank = 1;
+    if ($geoRes) {
+        while ($row = $geoRes->fetch_assoc()) {
+            $guestCount = (int)$row['active_guests'];
+            $pct = $totalGuests > 0 ? round(($guestCount / $totalGuests) * 100, 1) : 0;
+            $locations[] = [
+                'rank' => $rank++,
+                'country' => $row['country'],
+                'country_code' => $row['country_code'],
+                'city' => $row['city'],
+                'region' => $row['region'],
+                'active_guests' => $guestCount,
+                'percentage' => $pct,
+                'total_plays' => (int)$row['total_plays'],
+                'total_time_seconds' => (int)$row['total_time_seconds']
+            ];
+        }
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'data' => [
+            'range' => $range,
+            'range_label' => $rangeLabel,
+            'summary' => [
+                'total_active_guests' => $totalGuests,
+                'total_plays' => $totalPlays,
+                'total_time_seconds' => $totalTimeSeconds,
+                'total_cities_count' => count($locations)
+            ],
+            'locations' => $locations
+        ]
+    ]);
+    exit();
 }
 
 else {
