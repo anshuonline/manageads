@@ -71,6 +71,7 @@ if (isset($_GET['setup']) && $_GET['setup'] === '1') {
 }
 
 // ── Schema Auto-Migration Guard (Runs once safely without DDL on hot path) ──
+@$conn->query("CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(64) PRIMARY KEY, setting_value LONGTEXT)");
 $schema_check = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'guest_schema_v2' LIMIT 1");
 if (!$schema_check || $schema_check->num_rows === 0) {
     @$conn->query("ALTER TABLE guest_analytics ADD COLUMN ip_address VARCHAR(45) DEFAULT ''");
@@ -147,6 +148,9 @@ function resolveIPsLocations(array $ips, $conn, $limit = 5) {
                     'country_code' => 'LOCAL',
                     'location' => 'Localhost / Internal'
                 ];
+                // Persist to ip_cache so MySQL won't pick them up again as uncached
+                $escIp = $conn->real_escape_string($ip);
+                @$conn->query("INSERT INTO ip_cache (ip, city, region, country, country_code) VALUES ('$escIp', 'Localhost', '', 'Local Network', 'LOCAL') ON DUPLICATE KEY UPDATE ip = ip");
             } else {
                 $uncached[] = $ip;
             }
@@ -179,6 +183,21 @@ function resolveIPsLocations(array $ips, $conn, $limit = 5) {
                     'location' => implode(', ', $locParts) ?: 'Unknown'
                 ];
             }
+        }
+    }
+
+    // Negative cache: persist 'Unknown' for IPs that failed API lookup so they don't re-resolve endlessly
+    foreach ($uncached as $failedIp) {
+        if (!isset($cached[$failedIp])) {
+            $escIp = $conn->real_escape_string($failedIp);
+            @$conn->query("INSERT INTO ip_cache (ip, city, region, country, country_code) VALUES ('$escIp', 'Unknown', '', 'Unknown', '') ON DUPLICATE KEY UPDATE ip = ip");
+            $cached[$failedIp] = [
+                'city' => 'Unknown',
+                'region' => '',
+                'country' => 'Unknown',
+                'country_code' => '',
+                'location' => 'Unknown'
+            ];
         }
     }
 
