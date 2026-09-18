@@ -307,6 +307,12 @@ elseif ($action === 'getAnalytics') {
         $analytics['summary']['total_likes'] = 0;
     }
     
+    // Get Total User Time Spent
+    $res = $conn->query("SELECT SUM(total_time_spent_seconds) as total_time FROM user_analytics");
+    if ($res && $row = $res->fetch_assoc()) {
+        $analytics['summary']['total_time_seconds'] = (int)$row['total_time'];
+    }
+    
     // Guest Analytics Summary
     $guest_summary = [
         'total_guests' => 0,
