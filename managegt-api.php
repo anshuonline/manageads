@@ -41,11 +41,37 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── App Settings (sections, popups, header, etc.) ──────────────────────────
-// Created defensively so fresh deployments never fail on save
-$conn->query("CREATE TABLE IF NOT EXISTS app_settings (
-    setting_key VARCHAR(100) PRIMARY KEY,
-    setting_value LONGTEXT
-)");
+// One-time table setup: only runs via ?setup=1
+if (isset($_GET['setup']) && $_GET['setup'] === '1') {
+    $conn->query("CREATE TABLE IF NOT EXISTS app_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value LONGTEXT
+    )");
+    echo json_encode(["status" => "success", "message" => "app_settings table created/verified."]);
+    $conn->close();
+    exit();
+}
+
+// ── Combined App Init (Performance: 4 queries in 1 request) ────────────────
+if ($action === 'app_init') {
+    $result = [];
+    // Sections
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
+    $result['sections'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : new stdClass();
+    // Playlists
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_playlists'");
+    $result['playlists'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : new stdClass();
+    // Header
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_header'");
+    $result['header'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : new stdClass();
+    // Popups
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_popups'");
+    $result['popups'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : new stdClass();
+
+    echo json_encode($result);
+    $conn->close();
+    exit();
+}
 
 // ── Sections ────────────────────────────────────────────────────────────────
 

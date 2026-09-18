@@ -4,3 +4,25 @@
     Header set Access-Control-Allow-Methods "GET, OPTIONS"
     Header set Access-Control-Allow-Headers "Content-Type"
 </IfModule>
+
+# ── Performance: Browser Caching ──────────────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+    # Cache static JSON files for 10 minutes
+    ExpiresByType application/json "access plus 10 minutes"
+    # Cache images for 1 day
+    ExpiresByType image/jpeg "access plus 1 day"
+    ExpiresByType image/png "access plus 1 day"
+    ExpiresByType image/webp "access plus 1 day"
+</IfModule>
+
+<IfModule mod_headers.c>
+    # Cache curated-songs.json for 10 minutes (reduces PHP-equivalent hits)
+    <FilesMatch "curated-songs\.json$">
+        Header set Cache-Control "public, max-age=600"
+    </FilesMatch>
+    # Don't cache PHP API responses (they need fresh data)
+    <FilesMatch "\.php$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>

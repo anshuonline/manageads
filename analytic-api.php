@@ -22,52 +22,53 @@ function returnError($message, $error = null) {
 $inputJSON = file_get_contents('php://input');
 $input = json_decode($inputJSON, TRUE);
 
-// Auto-create daily_analytics table if it doesn't exist
-$conn->query("CREATE TABLE IF NOT EXISTS daily_analytics (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    stat_date DATE,
-    video_id VARCHAR(50),
-    title VARCHAR(255),
-    thumbnail VARCHAR(500),
-    play_count INT DEFAULT 0,
-    like_count INT DEFAULT 0,
-    share_count INT DEFAULT 0,
-    UNIQUE KEY unique_daily (stat_date, video_id)
-)");
-
-// Auto-create guest analytics tables
-$conn->query("CREATE TABLE IF NOT EXISTS guest_analytics (
-    guest_id VARCHAR(64) PRIMARY KEY,
-    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_active DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    total_plays INT DEFAULT 0,
-    total_time_seconds INT DEFAULT 0,
-    last_song_title VARCHAR(255) DEFAULT '',
-    last_video_id VARCHAR(50) DEFAULT ''
-)");
-
-$conn->query("CREATE TABLE IF NOT EXISTS guest_song_analytics (
-    video_id VARCHAR(50) PRIMARY KEY,
-    title VARCHAR(255),
-    thumbnail VARCHAR(500),
-    artist VARCHAR(255) DEFAULT '',
-    play_count INT DEFAULT 0,
-    last_played DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-)");
-
-$conn->query("CREATE TABLE IF NOT EXISTS daily_guest_analytics (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    stat_date DATE,
-    video_id VARCHAR(50),
-    title VARCHAR(255),
-    thumbnail VARCHAR(500),
-    play_count INT DEFAULT 0,
-    UNIQUE KEY unique_daily_guest (stat_date, video_id)
-)");
-
-// Performance Indexes for high traffic scale
-@$conn->query("ALTER TABLE guest_analytics ADD INDEX idx_last_active (last_active)");
-@$conn->query("ALTER TABLE guest_song_analytics ADD INDEX idx_play_count (play_count)");
+// One-time DB setup: run once via ?action=setup&setup=1 to create tables & indexes.
+// Kept out of normal request flow to avoid DDL metadata locks under high traffic.
+if (isset($_GET['setup']) && $_GET['setup'] === '1') {
+    $conn->query("CREATE TABLE IF NOT EXISTS daily_analytics (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        stat_date DATE,
+        video_id VARCHAR(50),
+        title VARCHAR(255),
+        thumbnail VARCHAR(500),
+        play_count INT DEFAULT 0,
+        like_count INT DEFAULT 0,
+        share_count INT DEFAULT 0,
+        UNIQUE KEY unique_daily (stat_date, video_id)
+    )");
+    $conn->query("CREATE TABLE IF NOT EXISTS guest_analytics (
+        guest_id VARCHAR(64) PRIMARY KEY,
+        first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_active DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        total_plays INT DEFAULT 0,
+        total_time_seconds INT DEFAULT 0,
+        last_song_title VARCHAR(255) DEFAULT '',
+        last_video_id VARCHAR(50) DEFAULT ''
+    )");
+    $conn->query("CREATE TABLE IF NOT EXISTS guest_song_analytics (
+        video_id VARCHAR(50) PRIMARY KEY,
+        title VARCHAR(255),
+        thumbnail VARCHAR(500),
+        artist VARCHAR(255) DEFAULT '',
+        play_count INT DEFAULT 0,
+        last_played DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )");
+    $conn->query("CREATE TABLE IF NOT EXISTS daily_guest_analytics (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        stat_date DATE,
+        video_id VARCHAR(50),
+        title VARCHAR(255),
+        thumbnail VARCHAR(500),
+        play_count INT DEFAULT 0,
+        UNIQUE KEY unique_daily_guest (stat_date, video_id)
+    )");
+    // Performance Indexes for high traffic scale
+    @$conn->query("ALTER TABLE guest_analytics ADD INDEX idx_last_active (last_active)");
+    @$conn->query("ALTER TABLE guest_song_analytics ADD INDEX idx_play_count (play_count)");
+    echo json_encode(['status' => 'success', 'message' => 'Tables and indexes created/verified.']);
+    $conn->close();
+    exit();
+}
 
 if ($action === 'recordPlay') {
     $video_id = $input['video_id'] ?? null;
