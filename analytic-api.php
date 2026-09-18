@@ -35,13 +35,47 @@ $conn->query("CREATE TABLE IF NOT EXISTS daily_analytics (
     UNIQUE KEY unique_daily (stat_date, video_id)
 )");
 
+// Auto-create guest analytics tables
+$conn->query("CREATE TABLE IF NOT EXISTS guest_analytics (
+    guest_id VARCHAR(64) PRIMARY KEY,
+    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_active DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    total_plays INT DEFAULT 0,
+    total_time_seconds INT DEFAULT 0,
+    last_song_title VARCHAR(255) DEFAULT '',
+    last_video_id VARCHAR(50) DEFAULT ''
+)");
+
+$conn->query("CREATE TABLE IF NOT EXISTS guest_song_analytics (
+    video_id VARCHAR(50) PRIMARY KEY,
+    title VARCHAR(255),
+    thumbnail VARCHAR(500),
+    artist VARCHAR(255) DEFAULT '',
+    play_count INT DEFAULT 0,
+    last_played DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)");
+
+$conn->query("CREATE TABLE IF NOT EXISTS daily_guest_analytics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    stat_date DATE,
+    video_id VARCHAR(50),
+    title VARCHAR(255),
+    thumbnail VARCHAR(500),
+    play_count INT DEFAULT 0,
+    UNIQUE KEY unique_daily_guest (stat_date, video_id)
+)");
+
 if ($action === 'recordPlay') {
     $video_id = $input['video_id'] ?? null;
     $title = $input['title'] ?? '';
     $thumbnail = $input['thumbnail'] ?? '';
+    $artist = $input['artist'] ?? '';
+    $is_guest = !empty($input['is_guest']);
+    $guest_id = $input['guest_id'] ?? null;
     
     if (!$video_id) returnError("video_id required");
     
+    // Overall song analytics
     $stmt = $conn->prepare("INSERT INTO song_analytics (video_id, title, thumbnail, play_count) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE play_count = play_count + 1, title = VALUES(title), thumbnail = VALUES(thumbnail)");
     $stmt->bind_param("sss", $video_id, $title, $thumbnail);
     $stmt->execute();
@@ -51,8 +85,38 @@ if ($action === 'recordPlay') {
     $daily_stmt->bind_param("sss", $video_id, $title, $thumbnail);
     $daily_stmt->execute();
     
+    // Guest Analytics if unauthenticated
+    if ($is_guest) {
+        $g_song = $conn->prepare("INSERT INTO guest_song_analytics (video_id, title, thumbnail, artist, play_count) VALUES (?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE play_count = play_count + 1, title = VALUES(title), thumbnail = VALUES(thumbnail), artist = VALUES(artist), last_played = NOW()");
+        $g_song->bind_param("ssss", $video_id, $title, $thumbnail, $artist);
+        $g_song->execute();
+        
+        $g_daily = $conn->prepare("INSERT INTO daily_guest_analytics (stat_date, video_id, title, thumbnail, play_count) VALUES (CURDATE(), ?, ?, ?, 1) ON DUPLICATE KEY UPDATE play_count = play_count + 1, title = VALUES(title), thumbnail = VALUES(thumbnail)");
+        $g_daily->bind_param("sss", $video_id, $title, $thumbnail);
+        $g_daily->execute();
+        
+        if ($guest_id) {
+            $g_usr = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, last_song_title, last_video_id) VALUES (?, NOW(), NOW(), 1, ?, ?) ON DUPLICATE KEY UPDATE total_plays = total_plays + 1, last_song_title = VALUES(last_song_title), last_video_id = VALUES(last_video_id), last_active = NOW()");
+            $g_usr->bind_param("sss", $guest_id, $title, $video_id);
+            $g_usr->execute();
+        }
+    }
+    
     echo json_encode(['status' => 'success']);
 } 
+
+elseif ($action === 'recordGuestPing') {
+    $guest_id = $input['guest_id'] ?? null;
+    $seconds = (int)($input['seconds'] ?? 60);
+    
+    if ($guest_id) {
+        $stmt = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, total_time_seconds) VALUES (?, NOW(), NOW(), 0, ?) ON DUPLICATE KEY UPDATE total_time_seconds = total_time_seconds + ?, last_active = NOW()");
+        $stmt->bind_param("sii", $guest_id, $seconds, $seconds);
+        $stmt->execute();
+    }
+    echo json_encode(['status' => 'success']);
+    exit();
+}
 
 elseif ($action === 'recordLike') {
     $video_id = $input['video_id'] ?? null;
@@ -172,7 +236,7 @@ elseif ($action === 'getAnalytics') {
     $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all_time';
     
     // Build the query based on filter
-    $most_played_q = "SELECT * FROM song_analytics ORDER BY play_count DESC LIMIT 50";
+    $most_played_q = "SELECT s.*, COALESCE(g.play_count, 0) as guest_play_count, GREATEST(0, s.play_count - COALESCE(g.play_count, 0)) as user_play_count FROM song_analytics s LEFT JOIN guest_song_analytics g ON s.video_id = g.video_id ORDER BY s.play_count DESC LIMIT 50";
     $most_liked_q = "SELECT * FROM song_analytics ORDER BY like_count DESC LIMIT 50";
     $most_shared_q = "SELECT * FROM song_analytics ORDER BY share_count DESC LIMIT 50";
     
@@ -243,11 +307,49 @@ elseif ($action === 'getAnalytics') {
         $analytics['summary']['total_likes'] = 0;
     }
     
-    $res = $conn->query("SELECT SUM(total_time_spent_seconds) as total_time FROM user_analytics");
+    // Guest Analytics Summary
+    $guest_summary = [
+        'total_guests' => 0,
+        'active_guests_today' => 0,
+        'online_guests_now' => 0,
+        'total_guest_plays' => 0,
+        'total_guest_time_seconds' => 0
+    ];
+
+    $res = $conn->query("SELECT COUNT(*) as total, 
+                         SUM(CASE WHEN last_active >= CURDATE() THEN 1 ELSE 0 END) as active_today,
+                         SUM(CASE WHEN last_active >= NOW() - INTERVAL 15 MINUTE THEN 1 ELSE 0 END) as online_now,
+                         SUM(total_plays) as total_plays,
+                         SUM(total_time_seconds) as total_time
+                         FROM guest_analytics");
     if ($res && $row = $res->fetch_assoc()) {
-        $analytics['summary']['total_time_seconds'] = (int)$row['total_time'];
+        $guest_summary['total_guests'] = (int)$row['total'];
+        $guest_summary['active_guests_today'] = (int)($row['active_today'] ?? 0);
+        $guest_summary['online_guests_now'] = (int)($row['online_now'] ?? 0);
+        $guest_summary['total_guest_plays'] = (int)($row['total_plays'] ?? 0);
+        $guest_summary['total_guest_time_seconds'] = (int)($row['total_time'] ?? 0);
     }
-    
+    $analytics['guest_summary'] = $guest_summary;
+
+    // "Guests Ka Gana" - Top Songs played by non-logged-in guests
+    $guest_songs_q = "SELECT video_id, title, thumbnail, artist, play_count, last_played FROM guest_song_analytics ORDER BY play_count DESC LIMIT 50";
+    if ($filter === 'today') {
+        $guest_songs_q = "SELECT video_id, MAX(title) as title, MAX(thumbnail) as thumbnail, MAX(title) as artist, SUM(play_count) as play_count FROM daily_guest_analytics WHERE stat_date = CURDATE() GROUP BY video_id ORDER BY play_count DESC LIMIT 50";
+    } elseif ($filter === 'yesterday') {
+        $guest_songs_q = "SELECT video_id, MAX(title) as title, MAX(thumbnail) as thumbnail, MAX(title) as artist, SUM(play_count) as play_count FROM daily_guest_analytics WHERE stat_date = CURDATE() - INTERVAL 1 DAY GROUP BY video_id ORDER BY play_count DESC LIMIT 50";
+    } elseif ($filter === 'last_7_days') {
+        $guest_songs_q = "SELECT video_id, MAX(title) as title, MAX(thumbnail) as thumbnail, MAX(title) as artist, SUM(play_count) as play_count FROM daily_guest_analytics WHERE stat_date >= CURDATE() - INTERVAL 7 DAY GROUP BY video_id ORDER BY play_count DESC LIMIT 50";
+    }
+
+    $analytics['guest_top_songs'] = [];
+    $res = $conn->query($guest_songs_q);
+    if ($res) while($row = $res->fetch_assoc()) $analytics['guest_top_songs'][] = $row;
+
+    // Recent Active Guests
+    $analytics['recent_guests'] = [];
+    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id FROM guest_analytics ORDER BY last_active DESC LIMIT 100");
+    if ($res) while($row = $res->fetch_assoc()) $analytics['recent_guests'][] = $row;
+
     echo json_encode(['status' => 'success', 'data' => $analytics]);
 }
 
