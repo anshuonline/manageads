@@ -65,6 +65,10 @@ $conn->query("CREATE TABLE IF NOT EXISTS daily_guest_analytics (
     UNIQUE KEY unique_daily_guest (stat_date, video_id)
 )");
 
+// Performance Indexes for high traffic scale
+@$conn->query("ALTER TABLE guest_analytics ADD INDEX idx_last_active (last_active)");
+@$conn->query("ALTER TABLE guest_song_analytics ADD INDEX idx_play_count (play_count)");
+
 if ($action === 'recordPlay') {
     $video_id = $input['video_id'] ?? null;
     $title = $input['title'] ?? '';
