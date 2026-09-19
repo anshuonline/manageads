@@ -1,5 +1,7 @@
 <?php
 require 'config.php';
+date_default_timezone_set('Asia/Kolkata');
+@$conn->query("SET time_zone = '+05:30'");
 @$conn->query("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
 
 header("Access-Control-Allow-Origin: *");
