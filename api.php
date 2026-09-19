@@ -45,11 +45,21 @@ if ($action === 'app_ads') {
         }
     }
 
-    // Fetch header scripts
-    $res = $conn->query("SELECT custom_code FROM ads WHERE placeholder_id LIKE 'header_script_%' AND is_active = 1");
+    // Fetch header scripts with auto-cleanup for previously escaped slashes
+    $res = $conn->query("SELECT placeholder_id, custom_code FROM ads WHERE placeholder_id LIKE 'header_script_%' AND is_active = 1");
     if ($res) {
         while ($row = $res->fetch_assoc()) {
-            $result['header_scripts'][] = $row;
+            $code = $row['custom_code'];
+            if (strpos($code, '\"') !== false || strpos($code, '\r\n') !== false || strpos($code, "\'") !== false) {
+                $cleaned = stripslashes(str_replace(['\r\n', '\r', '\n'], "\n", $code));
+                $upStmt = $conn->prepare("UPDATE ads SET custom_code = ? WHERE placeholder_id = ?");
+                if ($upStmt) {
+                    $upStmt->bind_param("ss", $cleaned, $row['placeholder_id']);
+                    $upStmt->execute();
+                }
+                $code = $cleaned;
+            }
+            $result['header_scripts'][] = ['custom_code' => $code];
         }
     }
 
@@ -68,14 +78,25 @@ if ($action === 'prices') {
     }
     echo json_encode($prices);
 } elseif ($action === 'header_scripts') {
-    $result = $conn->query("SELECT custom_code FROM ads WHERE placeholder_id LIKE 'header_script_%' AND is_active = 1");
+    $result = $conn->query("SELECT placeholder_id, custom_code FROM ads WHERE placeholder_id LIKE 'header_script_%' AND is_active = 1");
     $scripts = [];
     if ($result) {
         while ($row = $result->fetch_assoc()) {
-            $scripts[] = $row;
+            $code = $row['custom_code'];
+            if (strpos($code, '\"') !== false || strpos($code, '\r\n') !== false || strpos($code, "\'") !== false) {
+                $cleaned = stripslashes(str_replace(['\r\n', '\r', '\n'], "\n", $code));
+                $upStmt = $conn->prepare("UPDATE ads SET custom_code = ? WHERE placeholder_id = ?");
+                if ($upStmt) {
+                    $upStmt->bind_param("ss", $cleaned, $row['placeholder_id']);
+                    $upStmt->execute();
+                }
+                $code = $cleaned;
+            }
+            $scripts[] = ['custom_code' => $code];
         }
     }
     echo json_encode($scripts);
+    exit();
 } else {
     $placeholder = $_GET['placeholder'] ?? 'bottom_player_banner';
     $stmt = $conn->prepare("SELECT * FROM ads WHERE placeholder_id = ?");

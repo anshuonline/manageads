@@ -74,8 +74,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Header Scripts CRUD using ads table
     if (isset($_POST['action'])) {
         if ($_POST['action'] === 'add_header_script') {
-            $name = $conn->real_escape_string($_POST['script_name']);
-            $code = $conn->real_escape_string($_POST['custom_code']);
+            $name = trim($_POST['script_name'] ?? '');
+            $code = trim($_POST['custom_code'] ?? '');
+            // Unescape any accidental literal backslashes
+            if (strpos($code, '\"') !== false || strpos($code, '\r\n') !== false || strpos($code, "\'") !== false) {
+                $code = stripslashes(str_replace(['\r\n', '\r', '\n'], "\n", $code));
+            }
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             $placeholder_id = 'header_script_' . time();
             
@@ -85,15 +89,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "Header script added successfully.";
                 $message_type = "success";
             } else {
-                $message = "Error adding header script.";
+                $message = "Error adding header script: " . $conn->error;
                 $message_type = "error";
             }
         }
         
         if ($_POST['action'] === 'update_header_script') {
-            $id = $conn->real_escape_string($_POST['script_id']);
-            $name = $conn->real_escape_string($_POST['script_name']);
-            $code = $conn->real_escape_string($_POST['custom_code']);
+            $id = trim($_POST['script_id'] ?? '');
+            $name = trim($_POST['script_name'] ?? '');
+            $code = trim($_POST['custom_code'] ?? '');
+            if (strpos($code, '\"') !== false || strpos($code, '\r\n') !== false || strpos($code, "\'") !== false) {
+                $code = stripslashes(str_replace(['\r\n', '\r', '\n'], "\n", $code));
+            }
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             
             $stmt = $conn->prepare("UPDATE ads SET placeholder_name = ?, custom_code = ?, is_active = ? WHERE placeholder_id = ?");
@@ -102,13 +109,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "Header script updated successfully.";
                 $message_type = "success";
             } else {
-                $message = "Error updating header script.";
+                $message = "Error updating header script: " . $conn->error;
                 $message_type = "error";
             }
         }
         
         if ($_POST['action'] === 'delete_header_script') {
-            $id = $conn->real_escape_string($_POST['script_id']);
+            $id = trim($_POST['script_id'] ?? '');
             $stmt = $conn->prepare("DELETE FROM ads WHERE placeholder_id = ?");
             $stmt->bind_param("s", $id);
             if ($stmt->execute()) {
@@ -118,8 +125,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         if ($_POST['action'] === 'toggle_header_script') {
-            $id = $conn->real_escape_string($_POST['script_id']);
-            $is_active = intval($_POST['is_active']);
+            $id = trim($_POST['script_id'] ?? '');
+            $is_active = intval($_POST['is_active'] ?? 0);
             $stmt = $conn->prepare("UPDATE ads SET is_active = ? WHERE placeholder_id = ?");
             $stmt->bind_param("is", $is_active, $id);
             if ($stmt->execute()) {
@@ -294,6 +301,16 @@ $header_scripts = [];
 $active_ads_count = 0;
 while($row = $adsResult->fetch_assoc()) {
     if (strpos($row['placeholder_id'], 'header_script_') === 0) {
+        // Auto-heal any corrupted backslash escapes in database
+        if (strpos($row['custom_code'], '\"') !== false || strpos($row['custom_code'], '\r\n') !== false || strpos($row['custom_code'], "\'") !== false) {
+            $cleaned = stripslashes(str_replace(['\r\n', '\r', '\n'], "\n", $row['custom_code']));
+            $upStmt = $conn->prepare("UPDATE ads SET custom_code = ? WHERE placeholder_id = ?");
+            if ($upStmt) {
+                $upStmt->bind_param("ss", $cleaned, $row['placeholder_id']);
+                $upStmt->execute();
+            }
+            $row['custom_code'] = $cleaned;
+        }
         $header_scripts[] = $row;
     } else {
         $ads[] = $row;
@@ -1737,6 +1754,11 @@ if ($is_spin_stats_page) {
                                                     <h3 class="text-sm font-bold text-white"><?php echo htmlspecialchars($script['placeholder_name']); ?></h3>
                                                 </div>
                                                 <div class="flex items-center gap-2">
+                                                    <!-- Edit Toggle -->
+                                                    <button type="button" onclick="document.getElementById('edit-snippet-<?php echo htmlspecialchars($script['placeholder_id']); ?>').classList.toggle('hidden');" class="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-gray-300 hover:text-white border border-white/[0.08] text-xs transition" title="Edit Snippet">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+
                                                     <!-- Toggle Status -->
                                                     <form method="POST" class="inline">
                                                         <input type="hidden" name="action" value="toggle_header_script">
@@ -1760,6 +1782,27 @@ if ($is_spin_stats_page) {
 
                                             <div class="bg-black/80 p-3.5 rounded-2xl border border-white/[0.06] overflow-x-auto">
                                                 <pre class="text-[11px] font-mono text-gray-300"><?php echo htmlspecialchars($script['custom_code']); ?></pre>
+                                            </div>
+
+                                            <!-- Collapsible Edit Form -->
+                                            <div id="edit-snippet-<?php echo htmlspecialchars($script['placeholder_id']); ?>" class="hidden pt-3 border-t border-white/[0.06] space-y-3">
+                                                <form method="POST" class="space-y-3">
+                                                    <input type="hidden" name="action" value="update_header_script">
+                                                    <input type="hidden" name="script_id" value="<?php echo htmlspecialchars($script['placeholder_id']); ?>">
+                                                    <input type="hidden" name="is_active" value="<?php echo $is_active ? '1' : '0'; ?>">
+                                                    <div>
+                                                        <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Snippet Title</label>
+                                                        <input type="text" name="script_name" value="<?php echo htmlspecialchars($script['placeholder_name']); ?>" required class="w-full px-3 py-2 bg-white/[0.03] border border-white/[0.08] rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 transition">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Code Snippet</label>
+                                                        <textarea name="custom_code" required rows="5" class="w-full p-3 bg-white/[0.03] border border-white/[0.08] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-pink-500 transition"><?php echo htmlspecialchars($script['custom_code']); ?></textarea>
+                                                    </div>
+                                                    <div class="flex justify-end gap-2">
+                                                        <button type="button" onclick="document.getElementById('edit-snippet-<?php echo htmlspecialchars($script['placeholder_id']); ?>').classList.add('hidden');" class="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs text-gray-300 transition">Cancel</button>
+                                                        <button type="submit" class="px-4 py-1.5 rounded-xl btn-gradient-brand font-bold text-xs text-white shadow transition">Save Changes</button>
+                                                    </div>
+                                                </form>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
