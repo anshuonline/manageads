@@ -1,1 +1,0 @@
-﻿<?php require 'config.php'; $conn->query('TRUNCATE TABLE search_analytics_log'); $conn->query('TRUNCATE TABLE search_analytics_summary'); $conn->query('TRUNCATE TABLE daily_search_analytics'); echo 'All search data cleared!'; ?>
