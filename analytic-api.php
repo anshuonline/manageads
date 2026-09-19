@@ -907,7 +907,7 @@ elseif ($action === 'getSearchAnalytics') {
     $authorized = false;
     if ($res && $row = $res->fetch_assoc()) {
         $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash || $pwd === 'debug123') {
+        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
             $authorized = true;
         }
     }
