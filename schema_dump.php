@@ -1,7 +1,7 @@
 <?php
 require 'config.php';
 
-$tables = ['song_analytics', 'user_analytics', 'user_profiles', 'user_feedback', 'user_playlists', 'spin_history', 'indexed_tracks', 'saved_playlists', 'campaign_bookings'];
+$tables = ['song_analytics', 'user_analytics', 'user_profiles', 'user_feedback', 'user_playlists', 'spin_history', 'indexed_tracks', 'saved_playlists', 'campaign_bookings', 'search_analytics_log', 'search_analytics_summary', 'daily_search_analytics'];
 
 $schema = [];
 foreach ($tables as $table) {
