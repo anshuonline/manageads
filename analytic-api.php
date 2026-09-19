@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+@$conn->query("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
@@ -908,7 +909,8 @@ elseif ($action === 'getSearchAnalytics') {
     }
     if (!$authorized) returnError("Unauthorized");
 
-    $period = $_GET['period'] ?? 'last_30_days';
+    try {
+        $period = $_GET['period'] ?? 'last_30_days';
     $category_filter = trim($_GET['category'] ?? 'all');
     $search_type_filter = trim($_GET['search_type'] ?? 'all');
     $min_volume = (int)($_GET['min_volume'] ?? 0);
@@ -1070,16 +1072,18 @@ elseif ($action === 'getSearchAnalytics') {
     $today_diff = $searches_today - $searches_yesterday;
     $today_growth = $searches_yesterday > 0 ? round(($today_diff / $searches_yesterday) * 100, 1) : ($searches_today > 0 ? 100 : 0);
 
-    function calcMetricChange($curr, $prev) {
-        $diff = $curr - $prev;
-        $pct = $prev > 0 ? round(($diff / $prev) * 100, 1) : ($curr > 0 ? 100.0 : 0.0);
-        return [
-            'current' => $curr,
-            'previous' => $prev,
-            'diff' => $diff,
-            'percentage' => $pct,
-            'trend' => $pct > 0 ? 'up' : ($pct < 0 ? 'down' : 'neutral')
-        ];
+    if (!function_exists('calcMetricChange')) {
+        function calcMetricChange($curr, $prev) {
+            $diff = $curr - $prev;
+            $pct = $prev > 0 ? round(($diff / $prev) * 100, 1) : ($curr > 0 ? 100.0 : 0.0);
+            return [
+                'current' => $curr,
+                'previous' => $prev,
+                'diff' => $diff,
+                'percentage' => $pct,
+                'trend' => $pct > 0 ? 'up' : ($pct < 0 ? 'down' : 'neutral')
+            ];
+        }
     }
 
     $c_searches = (int)($curr_kpi['total_searches'] ?? 0);
@@ -1095,7 +1099,7 @@ elseif ($action === 'getSearchAnalytics') {
     $avg_per_user_prev = $p_users > 0 ? round($p_searches / $p_users, 1) : 0;
 
     // Top Search in current period
-    $top_q_res = $conn->query("SELECT display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date BETWEEN '$curr_start' AND '$curr_end' $cat_clause GROUP BY clean_query ORDER BY total DESC LIMIT 1");
+    $top_q_res = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date BETWEEN '$curr_start' AND '$curr_end' $cat_clause GROUP BY clean_query ORDER BY total DESC LIMIT 1");
     $top_search = $top_q_res && $top_row = $top_q_res->fetch_assoc() ? $top_row : ['display_query' => 'None', 'total' => 0];
 
     // ── 2. Time-Series Chart Data with Granularity ───────────────────────────
@@ -1362,7 +1366,7 @@ elseif ($action === 'getSearchAnalytics') {
     ];
 
     foreach ($tab_queries as $tkey => $where_q) {
-        $t_res = $conn->query("SELECT display_query, category, SUM(search_count) as searches, SUM(result_clicks) as clicks, SUM(song_plays) as plays FROM daily_search_analytics WHERE $where_q GROUP BY clean_query ORDER BY searches DESC LIMIT 10");
+        $t_res = $conn->query("SELECT MAX(display_query) as display_query, MAX(category) as category, SUM(search_count) as searches, SUM(result_clicks) as clicks, SUM(song_plays) as plays FROM daily_search_analytics WHERE $where_q GROUP BY clean_query ORDER BY searches DESC LIMIT 10");
         if ($t_res) {
             $t_rank = 1;
             while ($tr = $t_res->fetch_assoc()) {
@@ -1380,18 +1384,18 @@ elseif ($action === 'getSearchAnalytics') {
 
     // ── 7. Monthly Analytics ─────────────────────────────────────────────────
     $monthly_analytics = [];
-    $m_list_res = $conn->query("SELECT DATE_FORMAT(stat_date, '%Y-%m') as ym, DATE_FORMAT(stat_date, '%M %Y') as month_name, SUM(search_count) as total_searches, COUNT(DISTINCT clean_query) as unique_queries FROM daily_search_analytics GROUP BY ym ORDER BY ym DESC LIMIT 12");
+    $m_list_res = $conn->query("SELECT DATE_FORMAT(stat_date, '%Y-%m') as ym, DATE_FORMAT(stat_date, '%M %Y') as month_name, SUM(search_count) as total_searches, COUNT(DISTINCT clean_query) as unique_queries FROM daily_search_analytics GROUP BY ym, month_name ORDER BY ym DESC LIMIT 12");
     if ($m_list_res) {
         $prev_month_total = null;
         $m_temp = [];
         while ($mrow = $m_list_res->fetch_assoc()) {
             $ym = $mrow['ym'];
-            // Find top query for this month
-            $top_m_q = $conn->query("SELECT display_query, SUM(search_count) as total FROM daily_search_analytics WHERE DATE_FORMAT(stat_date, '%Y-%m') = '$ym' GROUP BY clean_query ORDER BY total DESC LIMIT 1");
+            // Find top query for this month using indexed range
+            $top_m_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$ym}-01' AND stat_date <= LAST_DAY('{$ym}-01') GROUP BY clean_query ORDER BY total DESC LIMIT 1");
             $top_m_query = $top_m_q && $trow = $top_m_q->fetch_assoc() ? $trow['display_query'] : 'N/A';
 
             // Top 5 queries of month
-            $top5_m_q = $conn->query("SELECT display_query, SUM(search_count) as total FROM daily_search_analytics WHERE DATE_FORMAT(stat_date, '%Y-%m') = '$ym' GROUP BY clean_query ORDER BY total DESC LIMIT 5");
+            $top5_m_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$ym}-01' AND stat_date <= LAST_DAY('{$ym}-01') GROUP BY clean_query ORDER BY total DESC LIMIT 5");
             $top5_list = [];
             if ($top5_m_q) {
                 while ($t5 = $top5_m_q->fetch_assoc()) {
@@ -1426,12 +1430,12 @@ elseif ($action === 'getSearchAnalytics') {
         $y_temp = [];
         while ($yrow = $y_res->fetch_assoc()) {
             $yr = $yrow['yr'];
-            $top_y_q = $conn->query("SELECT display_query, SUM(search_count) as total FROM daily_search_analytics WHERE YEAR(stat_date) = $yr GROUP BY clean_query ORDER BY total DESC LIMIT 1");
+            $top_y_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$yr}-01-01' AND stat_date <= '{$yr}-12-31' GROUP BY clean_query ORDER BY total DESC LIMIT 1");
             $top_y_name = $top_y_q && $trow = $top_y_q->fetch_assoc() ? $trow['display_query'] : 'N/A';
 
             // Monthly volume inside year
             $months_in_yr = [];
-            $my_res = $conn->query("SELECT DATE_FORMAT(stat_date, '%b') as m_lbl, SUM(search_count) as m_total FROM daily_search_analytics WHERE YEAR(stat_date) = $yr GROUP BY MONTH(stat_date) ORDER BY MONTH(stat_date) ASC");
+            $my_res = $conn->query("SELECT DATE_FORMAT(stat_date, '%b') as m_lbl, MONTH(stat_date) as m_num, SUM(search_count) as m_total FROM daily_search_analytics WHERE stat_date >= '{$yr}-01-01' AND stat_date <= '{$yr}-12-31' GROUP BY DATE_FORMAT(stat_date, '%b'), MONTH(stat_date) ORDER BY m_num ASC");
             if ($my_res) {
                 while ($myrow = $my_res->fetch_assoc()) {
                     $months_in_yr[] = ['month' => $myrow['m_lbl'], 'searches' => (int)$myrow['m_total']];
@@ -1474,7 +1478,7 @@ elseif ($action === 'getSearchAnalytics') {
     ];
 
     // ── 10. Zero-Result Searches (Content Gaps) ──────────────────────────────
-    $zero_res = $conn->query("SELECT display_query, SUM(zero_result_count) as zero_count, SUM(unique_users) as users, MAX(stat_date) as last_seen FROM daily_search_analytics WHERE stat_date BETWEEN '$curr_start' AND '$curr_end' AND zero_result_count > 0 GROUP BY clean_query ORDER BY zero_count DESC LIMIT 20");
+    $zero_res = $conn->query("SELECT MAX(display_query) as display_query, SUM(zero_result_count) as zero_count, SUM(unique_users) as users, MAX(stat_date) as last_seen FROM daily_search_analytics WHERE stat_date BETWEEN '$curr_start' AND '$curr_end' AND zero_result_count > 0 GROUP BY clean_query ORDER BY zero_count DESC LIMIT 20");
     $zero_result_searches = [];
     if ($zero_res) {
         while ($zr = $zero_res->fetch_assoc()) {
@@ -1596,6 +1600,9 @@ elseif ($action === 'getSearchAnalytics') {
         ]
     ]);
     exit();
+    } catch (Throwable $e) {
+        returnError("Search analytics error: " . $e->getMessage(), $e->getTraceAsString());
+    }
 }
 
 elseif ($action === 'getQueryDetails') {
@@ -1610,7 +1617,8 @@ elseif ($action === 'getQueryDetails') {
     }
     if (!$authorized) returnError("Unauthorized");
 
-    $query = trim($_GET['query'] ?? '');
+    try {
+        $query = trim($_GET['query'] ?? '');
     if (!$query) returnError("query parameter required");
     $clean_query = strtolower($query);
 
@@ -1683,6 +1691,9 @@ elseif ($action === 'getQueryDetails') {
         ]
     ]);
     exit();
+    } catch (Throwable $e) {
+        returnError("Query details error: " . $e->getMessage());
+    }
 }
 
 else {
