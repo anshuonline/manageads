@@ -1104,7 +1104,7 @@ elseif ($action === 'getSearchAnalytics') {
 
     // Top Search in current period
     $top_q_res = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date BETWEEN '$curr_start' AND '$curr_end' $cat_clause GROUP BY clean_query ORDER BY total DESC LIMIT 1");
-    $top_search = $top_q_res && $top_row = $top_q_res->fetch_assoc() ? $top_row : ['display_query' => 'None', 'total' => 0];
+    $top_search = ($top_q_res && ($top_row = $top_q_res->fetch_assoc())) ? $top_row : ['display_query' => 'None', 'total' => 0];
 
     // ── 2. Time-Series Chart Data with Granularity ───────────────────────────
     $chart_labels = [];
@@ -1395,8 +1395,8 @@ elseif ($action === 'getSearchAnalytics') {
         while ($mrow = $m_list_res->fetch_assoc()) {
             $ym = $mrow['ym'];
             // Find top query for this month using indexed range
-            $top_m_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$ym}-01' AND stat_date <= LAST_DAY('{$ym}-01') GROUP BY clean_query ORDER BY total DESC LIMIT 1");
-            $top_m_query = $top_m_q && $trow = $top_m_q->fetch_assoc() ? $trow['display_query'] : 'N/A';
+            $top_m_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$ym}-01' AND stat_date <= LAST_DAY('{$ym}-01') $cat_clause GROUP BY clean_query ORDER BY total DESC LIMIT 1");
+            $top_m_query = ($top_m_q && ($trow = $top_m_q->fetch_assoc())) ? $trow['display_query'] : 'N/A';
 
             // Top 5 queries of month
             $top5_m_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$ym}-01' AND stat_date <= LAST_DAY('{$ym}-01') GROUP BY clean_query ORDER BY total DESC LIMIT 5");
@@ -1435,7 +1435,7 @@ elseif ($action === 'getSearchAnalytics') {
         while ($yrow = $y_res->fetch_assoc()) {
             $yr = $yrow['yr'];
             $top_y_q = $conn->query("SELECT MAX(display_query) as display_query, SUM(search_count) as total FROM daily_search_analytics WHERE stat_date >= '{$yr}-01-01' AND stat_date <= '{$yr}-12-31' GROUP BY clean_query ORDER BY total DESC LIMIT 1");
-            $top_y_name = $top_y_q && $trow = $top_y_q->fetch_assoc() ? $trow['display_query'] : 'N/A';
+            $top_y_name = ($top_y_q && ($trow = $top_y_q->fetch_assoc())) ? $trow['display_query'] : 'N/A';
 
             // Monthly volume inside year
             $months_in_yr = [];
