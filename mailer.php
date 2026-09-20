@@ -247,33 +247,6 @@ class GanaTubeMailer {
                     </div>
                   </td>
                 </tr>
-
-                <!-- Spacer -->
-                <tr><td height="12" colspan="3" style="font-size: 0; line-height: 0;">&nbsp;</td></tr>
-
-                <!-- Feature 3 & 4 Row -->
-                <tr>
-                  <!-- Card 3: Offline Mode & Cast -->
-                  <td width="48%" valign="top" style="background: #141120; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 18px 16px;">
-                    <div style="font-size: 22px; margin-bottom: 8px;">⚡</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Offline & Cast</div>
-                    <div style="font-size: 12px; line-height: 1.5; color: rgba(255, 255, 255, 0.55);">
-                      Download songs locally for offline travel mode or cast directly to your Google Cast TV speakers.
-                    </div>
-                  </td>
-
-                  <td width="4%">&nbsp;</td>
-
-                  <!-- Card 4: Spin Wheel -->
-                  <td width="48%" valign="top" style="background: #141120; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 18px 16px;">
-                    <div style="font-size: 22px; margin-bottom: 8px;">🎰</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Daily Spin Wheel</div>
-                    <div style="font-size: 12px; line-height: 1.5; color: rgba(255, 255, 255, 0.55);">
-                      Spin daily to earn G-Coins, unlock achievements, and discover curated algorithmic playlists.
-                    </div>
-                  </td>
-                </tr>
-
               </table>
             </td>
           </tr>
