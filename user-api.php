@@ -12,22 +12,38 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 require_once 'config.php';
+require_once 'mailer.php';
+
+// Ensure welcome_email_sent column exists
+$col_check = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'welcome_email_sent'");
+if ($col_check && $col_check->num_rows == 0) {
+    @$conn->query("ALTER TABLE user_profiles ADD COLUMN welcome_email_sent TINYINT(1) DEFAULT 0");
+}
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 if ($action === 'getProfile') {
-    $email = isset($_GET['email']) ? $conn->real_escape_string($_GET['email']) : '';
+    $email = isset($_GET['email']) ? $conn->real_escape_string(trim($_GET['email'])) : '';
+    $name = isset($_GET['name']) ? $conn->real_escape_string(trim($_GET['name'])) : '';
     
     if (empty($email)) {
         echo json_encode(["status" => "error", "message" => "Email is required"]);
         exit;
     }
 
-    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences FROM user_profiles WHERE email = '$email'";
+    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent FROM user_profiles WHERE email = '$email'";
     $result = $conn->query($sql);
 
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
+        
+        // If user never received the welcome email (e.g. first-time login), send it!
+        if (empty($row['welcome_email_sent']) || (int)$row['welcome_email_sent'] === 0) {
+            $displayName = !empty($name) ? $name : (!empty($row['display_name']) ? $row['display_name'] : '');
+            GanaTubeMailer::sendWelcomeEmail($email, $displayName);
+            $conn->query("UPDATE user_profiles SET welcome_email_sent = 1 WHERE email = '$email'");
+        }
+
         echo json_encode([
             "status" => "success",
             "display_name" => $row['display_name'],
@@ -37,14 +53,18 @@ if ($action === 'getProfile') {
             "listening_preferences" => json_decode($row['listening_preferences'])
         ]);
     } else {
-        // Auto-create user in DB if not found
-        $insert_sql = "INSERT IGNORE INTO user_profiles (email) VALUES ('$email')";
+        // Auto-create user in DB on first-time signup
+        $cleanName = !empty($name) ? "'$name'" : "NULL";
+        $insert_sql = "INSERT INTO user_profiles (email, display_name, welcome_email_sent) VALUES ('$email', $cleanName, 1) ON DUPLICATE KEY UPDATE welcome_email_sent = 1";
         $conn->query($insert_sql);
+        
+        // Dispatch beautiful Hostinger SMTP welcome email
+        GanaTubeMailer::sendWelcomeEmail($email, $name);
         
         echo json_encode([
             "status" => "success",
-            "message" => "User created, returning defaults.",
-            "display_name" => null,
+            "message" => "User created, welcome email sent, returning defaults.",
+            "display_name" => !empty($name) ? $name : null,
             "preferred_languages" => null,
             "liked_songs" => null,
             "recent_plays" => null,
@@ -144,6 +164,38 @@ elseif ($action === 'getAllUsers') {
         "status" => "success",
         "data" => $users
     ]);
+}
+elseif ($action === 'sendWelcomeEmail') {
+    $data = json_decode(file_get_contents("php://input"), true);
+    $email = isset($data['email']) ? $conn->real_escape_string(trim($data['email'])) : '';
+    $name = isset($data['name']) ? $conn->real_escape_string(trim($data['name'])) : '';
+
+    if (empty($email)) {
+        echo json_encode(["status" => "error", "message" => "Email is required"]);
+        exit;
+    }
+
+    $chk = $conn->query("SELECT welcome_email_sent, display_name FROM user_profiles WHERE email = '$email'");
+    if ($chk && $chk->num_rows > 0) {
+        $row = $chk->fetch_assoc();
+        if ((int)$row['welcome_email_sent'] === 1) {
+            echo json_encode(["status" => "success", "message" => "Welcome email already sent previously"]);
+            exit;
+        }
+        $displayName = !empty($name) ? $name : (!empty($row['display_name']) ? $row['display_name'] : '');
+    } else {
+        $displayName = $name;
+        $cleanName = !empty($name) ? "'$name'" : "NULL";
+        $conn->query("INSERT IGNORE INTO user_profiles (email, display_name) VALUES ('$email', $cleanName)");
+    }
+
+    $mailRes = GanaTubeMailer::sendWelcomeEmail($email, $displayName);
+    if ($mailRes['success']) {
+        $conn->query("UPDATE user_profiles SET welcome_email_sent = 1 WHERE email = '$email'");
+        echo json_encode(["status" => "success", "message" => "Welcome email sent successfully"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => $mailRes['error']]);
+    }
 }
 else {
     echo json_encode(["status" => "error", "message" => "Invalid action"]);
