@@ -175,11 +175,16 @@ class GanaTubeMailer {
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center">
-                    <!-- Brand Name with Gradient Badge -->
-                    <div style="font-size: 28px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">
-                      <span style="color: #ffffff;">GANA</span><span style="background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); -webkit-background-clip: text; -webkit-text-fill-color: #ec4899; color: #ec4899;">TUBE</span>
-                    </div>
-                    <div style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-top: 6px; font-weight: 600;">
+                    <!-- Brand Logo -->
+                    <a href="https://ganatube.in" target="_blank" style="text-decoration: none; display: inline-block;">
+                      <img 
+                        src="https://i.ibb.co/zVFjH9J5/ganatubenewlogo.png" 
+                        alt="GanaTube" 
+                        width="190" 
+                        style="display: block; width: 190px; max-width: 100%; height: auto; border: 0; outline: none; text-decoration: none; margin: 0 auto;" 
+                      />
+                    </a>
+                    <div style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-top: 12px; font-weight: 600;">
                       Pure High-Fidelity Music
                     </div>
                   </td>
