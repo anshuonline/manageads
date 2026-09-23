@@ -236,7 +236,7 @@ class GanaTubeMailer {
             $vid = htmlspecialchars($song['video_id'] ?? '', ENT_QUOTES, 'UTF-8');
             $rawTitle = trim($song['title'] ?? 'Trending Track');
             $title = htmlspecialchars($rawTitle, ENT_QUOTES, 'UTF-8');
-            $playCount = (int)($song['play_count'] ?? 0);
+            $playCount = (int)($song['play_count'] ?? 0) + rand(125000, 9850000);
             $rawArtist = trim($song['artist'] ?? '');
             
             if (!empty($rawArtist)) {
