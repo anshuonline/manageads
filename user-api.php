@@ -44,12 +44,17 @@ if ($action === 'getProfile') {
             $conn->query("UPDATE user_profiles SET welcome_email_sent = 1 WHERE email = '$email'");
         }
 
+        $recentPlays = json_decode($row['recent_plays']);
+        if (is_array($recentPlays) && count($recentPlays) > 100) {
+            $recentPlays = array_slice($recentPlays, 0, 100);
+        }
+
         echo json_encode([
             "status" => "success",
             "display_name" => $row['display_name'],
             "preferred_languages" => json_decode($row['preferred_languages']),
             "liked_songs" => json_decode($row['liked_songs']),
-            "recent_plays" => json_decode($row['recent_plays']),
+            "recent_plays" => $recentPlays,
             "listening_preferences" => json_decode($row['listening_preferences'])
         ]);
     } else {
@@ -83,7 +88,14 @@ elseif ($action === 'updateProfile') {
 
     $preferred_languages = isset($data['preferred_languages']) ? $conn->real_escape_string(json_encode($data['preferred_languages'])) : '[]';
     $liked_songs = isset($data['liked_songs']) ? $conn->real_escape_string(json_encode($data['liked_songs'])) : '[]';
-    $recent_plays = isset($data['recent_plays']) ? $conn->real_escape_string(json_encode($data['recent_plays'])) : '[]';
+    
+    // Server-side safeguard: Cap recent plays to 100 to prevent database bloat and PHP memory exhaustion
+    $recent_plays_array = isset($data['recent_plays']) && is_array($data['recent_plays']) ? $data['recent_plays'] : [];
+    if (count($recent_plays_array) > 100) {
+        $recent_plays_array = array_slice($recent_plays_array, 0, 100);
+    }
+    $recent_plays = $conn->real_escape_string(json_encode($recent_plays_array));
+    
     $listening_preferences = isset($data['listening_preferences']) ? $conn->real_escape_string(json_encode($data['listening_preferences'])) : '[]';
 
     $sql = "INSERT INTO user_profiles (email, preferred_languages, liked_songs, recent_plays, listening_preferences) 
