@@ -4,23 +4,121 @@ header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 header("Content-Type: application/json");
 
-require_once 'config.php';
-
-// Set Indian Timezone globally for PHP and MySQL
-date_default_timezone_set('Asia/Kolkata');
-$conn->query("SET time_zone = '+05:30'");
-
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
-
 $action = $_GET['action'] ?? '';
 $json_input = file_get_contents('php://input');
 $data = json_decode($json_input, true) ?: [];
 
+// ── Fetch Spotify Playlist (No DB Needed - Fast & Direct) ─────────────────
+if ($action === 'fetch_spotify_playlist') {
+    $input = $_GET['url'] ?? ($data['url'] ?? ($_GET['id'] ?? ($data['id'] ?? '')));
+    $input = trim($input);
+
+    if (empty($input)) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Please provide a Spotify playlist URL or ID"]);
+        exit();
+    }
+
+    // Extract Playlist ID from URL or ID string
+    $playlistId = '';
+    if (preg_match('/playlist\/([a-zA-Z0-9]+)/', $input, $m)) {
+        $playlistId = $m[1];
+    } elseif (preg_match('/^spotify:playlist:([a-zA-Z0-9]+)$/', $input, $m)) {
+        $playlistId = $m[1];
+    } elseif (preg_match('/^[a-zA-Z0-9]{22}$/', $input)) {
+        $playlistId = $input;
+    }
+
+    if (empty($playlistId)) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid Spotify playlist link or ID"]);
+        exit();
+    }
+
+    $url = "https://open.spotify.com/embed/playlist/" . $playlistId;
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $html = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200 || empty($html)) {
+        http_response_code(404);
+        echo json_encode(["status" => "error", "message" => "Could not reach Spotify or playlist is private/not found (HTTP $httpCode)"]);
+        exit();
+    }
+
+    if (preg_match('/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s', $html, $m)) {
+        $decoded = json_decode($m[1], true);
+        $entity = $decoded['props']['pageProps']['state']['data']['entity'] ?? null;
+        
+        if ($entity) {
+            $title = $entity['title'] ?? 'Spotify Playlist';
+            
+            // Pick highest resolution cover image
+            $coverImage = '';
+            if (!empty($entity['visualIdentity']['image']) && is_array($entity['visualIdentity']['image'])) {
+                $images = $entity['visualIdentity']['image'];
+                $bestImg = $images[0]['url'] ?? '';
+                foreach ($images as $img) {
+                    if (($img['maxWidth'] ?? 0) >= 300) {
+                        $bestImg = $img['url'];
+                    }
+                }
+                $coverImage = $bestImg;
+            }
+
+            $trackList = $entity['trackList'] ?? [];
+            $tracks = [];
+            foreach ($trackList as $item) {
+                $trackTitle = trim($item['title'] ?? '');
+                $artist = trim($item['subtitle'] ?? '');
+                if (!empty($trackTitle)) {
+                    $artist = str_replace("\xc2\xa0", ' ', $artist);
+                    $tracks[] = [
+                        'title' => $trackTitle,
+                        'artist' => $artist,
+                        'query' => trim($trackTitle . ' ' . $artist)
+                    ];
+                }
+            }
+
+            echo json_encode([
+                "status" => "success",
+                "id" => $playlistId,
+                "title" => $title,
+                "coverImage" => $coverImage,
+                "total" => count($tracks),
+                "tracks" => $tracks
+            ]);
+            exit();
+        } else {
+            $pageStatus = $decoded['props']['pageProps']['status'] ?? 'unknown';
+            echo json_encode(["status" => "error", "message" => "Spotify playlist not found or private (Status: $pageStatus)"]);
+            exit();
+        }
+    }
+
+    echo json_encode(["status" => "error", "message" => "Could not parse Spotify playlist data"]);
+    exit();
+}
+
 require_once 'config.php';
+
+// Set Indian Timezone globally for PHP and MySQL
+date_default_timezone_set('Asia/Kolkata');
+$conn->query("SET time_zone = '+05:30'");
 
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
