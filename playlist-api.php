@@ -133,7 +133,44 @@ elseif ($action === 'getPublicPlaylist') {
             echo json_encode(["status" => "error", "message" => "This playlist is private"]);
         }
     } else {
-        echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+        // Fallback: Check ManageGT custom_playlists in app_settings table
+        $customRes = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_playlists'");
+        $foundCustom = null;
+        if ($customRes && $customRes->num_rows > 0) {
+            $customRow = $customRes->fetch_assoc();
+            $customData = json_decode($customRow['setting_value'], true);
+            if (is_array($customData)) {
+                foreach ($customData as $lang => $playlists) {
+                    if (is_array($playlists)) {
+                        foreach ($playlists as $pl) {
+                            if (isset($pl['id']) && $pl['id'] === $playlist_id) {
+                                $foundCustom = $pl;
+                                break 2;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($foundCustom) {
+            echo json_encode([
+                "status" => "success",
+                "data" => [
+                    "playlist_id" => $foundCustom['id'],
+                    "playlist_name" => $foundCustom['title'] ?? 'Playlist',
+                    "is_public" => true,
+                    "songs" => $foundCustom['songs'] ?? [],
+                    "owner" => "GanaTube",
+                    "owner_email" => "",
+                    "play_count" => 0,
+                    "created_at" => date('Y-m-d H:i:s'),
+                    "updated_at" => date('Y-m-d H:i:s')
+                ]
+            ]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+        }
     }
 }
 elseif ($action === 'getAllPublicPlaylists') {
