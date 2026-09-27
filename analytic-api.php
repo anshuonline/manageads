@@ -1702,6 +1702,149 @@ elseif ($action === 'getQueryDetails') {
     }
 }
 
+elseif ($action === 'getDailySummary') {
+    $pwd = $_GET['pwd'] ?? '';
+    
+    // Auth check
+    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
+    $authorized = false;
+    if ($res && $row = $res->fetch_assoc()) {
+        $stored_hash = $row['password_hash'];
+        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
+            $authorized = true;
+        }
+    }
+    if (!$authorized) {
+        echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
+        exit();
+    }
+
+    $target_date = $_GET['date'] ?? date('Y-m-d');
+    // Validate date format
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $target_date)) {
+        $target_date = date('Y-m-d');
+    }
+
+    $summary = [
+        'date' => $target_date,
+        'total_plays' => 0,
+        'guest_plays' => 0,
+        'user_plays' => 0,
+        'guest_visitors' => 0,
+        'logged_in_users' => 0,
+        'total_visitors' => 0,
+        'top_songs' => [],
+        'top_guests' => [],
+        'top_users' => [],
+        'recent_days' => []
+    ];
+
+    // Total plays on this date (all combined)
+    $stmt = $conn->prepare("SELECT COALESCE(SUM(play_count), 0) as total FROM daily_analytics WHERE stat_date = ?");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $summary['total_plays'] = (int)($r['total'] ?? 0);
+
+    // Guest plays on this date
+    $stmt = $conn->prepare("SELECT COALESCE(SUM(play_count), 0) as total FROM daily_guest_analytics WHERE stat_date = ?");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $summary['guest_plays'] = (int)($r['total'] ?? 0);
+
+    // User plays = total - guest
+    $summary['user_plays'] = max(0, $summary['total_plays'] - $summary['guest_plays']);
+
+    // Guest visitors active on this date
+    $stmt = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ?");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $summary['guest_visitors'] = (int)($r['cnt'] ?? 0);
+
+    // Logged-in users active on this date
+    $stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM user_profiles WHERE DATE(updated_at) = ?");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $summary['logged_in_users'] = (int)($r['cnt'] ?? 0);
+
+    // Total combined visitors
+    $summary['total_visitors'] = $summary['guest_visitors'] + $summary['logged_in_users'];
+
+    // Top songs played on this date
+    $stmt = $conn->prepare("SELECT video_id, title, thumbnail, play_count FROM daily_analytics WHERE stat_date = ? ORDER BY play_count DESC LIMIT 15");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result();
+    while ($row = $r->fetch_assoc()) {
+        $summary['top_songs'][] = $row;
+    }
+
+    // Top guests active on this date (by total plays, who were active that day)
+    $stmt = $conn->prepare("SELECT guest_id, total_plays, total_time_seconds, last_song_title, last_video_id, last_active, ip_address, current_page FROM guest_analytics WHERE DATE(last_active) = ? ORDER BY total_plays DESC LIMIT 15");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result();
+    while ($row = $r->fetch_assoc()) {
+        $summary['top_guests'][] = $row;
+    }
+
+    // Top logged-in users active on this date (cross-reference user_profiles + user_analytics)
+    $stmt = $conn->prepare("SELECT p.email, p.display_name, p.updated_at, COALESCE(a.total_time_spent_seconds, 0) as total_time_spent_seconds, COALESCE(a.total_plays, 0) as total_plays FROM user_profiles p LEFT JOIN user_analytics a ON p.email = a.email WHERE DATE(p.updated_at) = ? ORDER BY COALESCE(a.total_time_spent_seconds, 0) DESC LIMIT 15");
+    $stmt->bind_param("s", $target_date);
+    $stmt->execute();
+    $r = $stmt->get_result();
+    while ($row = $r->fetch_assoc()) {
+        $summary['top_users'][] = $row;
+    }
+
+    // Recent 7 days trend data for the mini chart
+    $recent_days = [];
+    for ($i = 6; $i >= 0; $i--) {
+        $d = date('Y-m-d', strtotime("-$i days", strtotime($target_date)));
+        $day_data = [
+            'date' => $d,
+            'label' => date('D', strtotime($d)),
+            'total_plays' => 0,
+            'guest_plays' => 0,
+            'guest_visitors' => 0,
+            'logged_in_users' => 0
+        ];
+
+        $stmt2 = $conn->prepare("SELECT COALESCE(SUM(play_count), 0) as total FROM daily_analytics WHERE stat_date = ?");
+        $stmt2->bind_param("s", $d);
+        $stmt2->execute();
+        $r2 = $stmt2->get_result()->fetch_assoc();
+        $day_data['total_plays'] = (int)($r2['total'] ?? 0);
+
+        $stmt2 = $conn->prepare("SELECT COALESCE(SUM(play_count), 0) as total FROM daily_guest_analytics WHERE stat_date = ?");
+        $stmt2->bind_param("s", $d);
+        $stmt2->execute();
+        $r2 = $stmt2->get_result()->fetch_assoc();
+        $day_data['guest_plays'] = (int)($r2['total'] ?? 0);
+
+        $stmt2 = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ?");
+        $stmt2->bind_param("s", $d);
+        $stmt2->execute();
+        $r2 = $stmt2->get_result()->fetch_assoc();
+        $day_data['guest_visitors'] = (int)($r2['cnt'] ?? 0);
+
+        $stmt2 = $conn->prepare("SELECT COUNT(*) as cnt FROM user_profiles WHERE DATE(updated_at) = ?");
+        $stmt2->bind_param("s", $d);
+        $stmt2->execute();
+        $r2 = $stmt2->get_result()->fetch_assoc();
+        $day_data['logged_in_users'] = (int)($r2['cnt'] ?? 0);
+
+        $recent_days[] = $day_data;
+    }
+    $summary['recent_days'] = $recent_days;
+
+    echo json_encode(['status' => 'success', 'data' => $summary]);
+    exit();
+}
+
 else {
     returnError("Invalid Action");
 }
