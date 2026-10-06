@@ -2029,6 +2029,12 @@ elseif ($action === 'getDailySummary') {
             'total_plays' => 0,
             'guest_plays' => 0,
             'user_plays' => 0,
+            'total_play_seconds' => 0,
+            'guest_play_seconds' => 0,
+            'user_play_seconds' => 0,
+            'total_play_hours' => 0,
+            'guest_play_hours' => 0,
+            'user_play_hours' => 0,
             'guest_visitors' => 0,
             'logged_in_users' => 0,
             'total_visitors' => 0,
@@ -2054,6 +2060,23 @@ elseif ($action === 'getDailySummary') {
 
         // User plays = total - guest
         $summary['user_plays'] = max(0, $summary['total_plays'] - $summary['guest_plays']);
+
+        // Calculate listening time / play hours (User + Guest combined)
+        $stmt_act = $conn->prepare("SELECT COALESCE(SUM(guest_pings), 0) as gp, COALESCE(SUM(user_pings), 0) as up FROM hourly_user_activity WHERE stat_date = ?");
+        $stmt_act->bind_param("s", $target_date);
+        $stmt_act->execute();
+        $r_act = $stmt_act->get_result()->fetch_assoc();
+        $guest_pings_sec = (int)($r_act['gp'] ?? 0) * 180;
+        $user_pings_sec = (int)($r_act['up'] ?? 0) * 180;
+        $guest_plays_sec = (int)round($summary['guest_plays'] * 205);
+        $user_plays_sec = (int)round($summary['user_plays'] * 205);
+
+        $summary['guest_play_seconds'] = max($guest_pings_sec, $guest_plays_sec);
+        $summary['user_play_seconds'] = max($user_pings_sec, $user_plays_sec);
+        $summary['total_play_seconds'] = $summary['guest_play_seconds'] + $summary['user_play_seconds'];
+        $summary['guest_play_hours'] = round($summary['guest_play_seconds'] / 3600, 1);
+        $summary['user_play_hours'] = round($summary['user_play_seconds'] / 3600, 1);
+        $summary['total_play_hours'] = round($summary['total_play_seconds'] / 3600, 1);
 
         // Guest visitors active on this date
         $dGuestFilter = buildGuestFilterSql($conn);
@@ -2109,6 +2132,13 @@ elseif ($action === 'getDailySummary') {
                 'label' => date('D', strtotime($d)),
                 'total_plays' => 0,
                 'guest_plays' => 0,
+                'user_plays' => 0,
+                'total_play_seconds' => 0,
+                'guest_play_seconds' => 0,
+                'user_play_seconds' => 0,
+                'total_play_hours' => 0,
+                'guest_play_hours' => 0,
+                'user_play_hours' => 0,
                 'guest_visitors' => 0,
                 'logged_in_users' => 0
             ];
@@ -2124,6 +2154,27 @@ elseif ($action === 'getDailySummary') {
             $stmt2->execute();
             $r2 = $stmt2->get_result()->fetch_assoc();
             $day_data['guest_plays'] = (int)($r2['total'] ?? 0);
+            $day_data['user_plays'] = max(0, $day_data['total_plays'] - $day_data['guest_plays']);
+
+            $stmt_act2 = $conn->prepare("SELECT COALESCE(SUM(guest_pings), 0) as gp, COALESCE(SUM(user_pings), 0) as up FROM hourly_user_activity WHERE stat_date = ?");
+            $stmt_act2->bind_param("s", $d);
+            $stmt_act2->execute();
+            $r_act2 = $stmt_act2->get_result()->fetch_assoc();
+            $d_gp_sec = (int)($r_act2['gp'] ?? 0) * 180;
+            $d_up_sec = (int)($r_act2['up'] ?? 0) * 180;
+            $d_gplay_sec = (int)round($day_data['guest_plays'] * 205);
+            $d_uplay_sec = (int)round($day_data['user_plays'] * 205);
+
+            $d_guest_sec = max($d_gp_sec, $d_gplay_sec);
+            $d_user_sec = max($d_up_sec, $d_uplay_sec);
+            $d_total_sec = $d_guest_sec + $d_user_sec;
+
+            $day_data['guest_play_seconds'] = $d_guest_sec;
+            $day_data['user_play_seconds'] = $d_user_sec;
+            $day_data['total_play_seconds'] = $d_total_sec;
+            $day_data['guest_play_hours'] = round($d_guest_sec / 3600, 1);
+            $day_data['user_play_hours'] = round($d_user_sec / 3600, 1);
+            $day_data['total_play_hours'] = round($d_total_sec / 3600, 1);
 
             $stmt2 = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter");
             $stmt2->bind_param("s", $d);
