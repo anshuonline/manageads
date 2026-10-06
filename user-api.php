@@ -20,6 +20,12 @@ if ($col_check && $col_check->num_rows == 0) {
     @$conn->query("ALTER TABLE user_profiles ADD COLUMN welcome_email_sent TINYINT(1) DEFAULT 0");
 }
 
+// Ensure total_plays column exists
+$col_check_plays = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'total_plays'");
+if ($col_check_plays && $col_check_plays->num_rows == 0) {
+    @$conn->query("ALTER TABLE user_profiles ADD COLUMN total_plays INT UNSIGNED DEFAULT 0");
+}
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 if ($action === 'getProfile') {
@@ -31,7 +37,7 @@ if ($action === 'getProfile') {
         exit;
     }
 
-    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent FROM user_profiles WHERE email = '$email'";
+    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent, total_plays FROM user_profiles WHERE email = '$email'";
     $result = $conn->query($sql);
 
     if ($result && $result->num_rows > 0) {
@@ -45,8 +51,15 @@ if ($action === 'getProfile') {
         }
 
         $recentPlays = json_decode($row['recent_plays']);
-        if (is_array($recentPlays) && count($recentPlays) > 100) {
+        $recentCount = is_array($recentPlays) ? count($recentPlays) : 0;
+        if (is_array($recentPlays) && $recentCount > 100) {
             $recentPlays = array_slice($recentPlays, 0, 100);
+        }
+
+        $totalPlays = isset($row['total_plays']) ? (int)$row['total_plays'] : 0;
+        if ($totalPlays < $recentCount) {
+            $totalPlays = $recentCount;
+            @$conn->query("UPDATE user_profiles SET total_plays = $totalPlays WHERE email = '$email'");
         }
 
         echo json_encode([
@@ -55,7 +68,8 @@ if ($action === 'getProfile') {
             "preferred_languages" => json_decode($row['preferred_languages']),
             "liked_songs" => json_decode($row['liked_songs']),
             "recent_plays" => $recentPlays,
-            "listening_preferences" => json_decode($row['listening_preferences'])
+            "listening_preferences" => json_decode($row['listening_preferences']),
+            "total_plays" => $totalPlays
         ]);
     } else {
         // Auto-create user in DB on first-time signup
@@ -98,19 +112,41 @@ elseif ($action === 'updateProfile') {
     
     $listening_preferences = isset($data['listening_preferences']) ? $conn->real_escape_string(json_encode($data['listening_preferences'])) : '[]';
 
-    $sql = "INSERT INTO user_profiles (email, preferred_languages, liked_songs, recent_plays, listening_preferences) 
-            VALUES ('$email', '$preferred_languages', '$liked_songs', '$recent_plays', '$listening_preferences')
+    $increment_play = isset($data['increment_play']) && $data['increment_play'] ? true : false;
+    $total_plays_input = isset($data['total_plays']) ? (int)$data['total_plays'] : 0;
+
+    $play_update = "";
+    if ($increment_play) {
+        $play_update = ", total_plays = GREATEST(COALESCE(total_plays, 0) + 1, $total_plays_input)";
+    } elseif ($total_plays_input > 0) {
+        $play_update = ", total_plays = GREATEST(COALESCE(total_plays, 0), $total_plays_input)";
+    }
+
+    $initial_plays = $increment_play ? max(1, $total_plays_input) : $total_plays_input;
+
+    $sql = "INSERT INTO user_profiles (email, preferred_languages, liked_songs, recent_plays, listening_preferences, total_plays) 
+            VALUES ('$email', '$preferred_languages', '$liked_songs', '$recent_plays', '$listening_preferences', $initial_plays)
             ON DUPLICATE KEY UPDATE 
             preferred_languages = VALUES(preferred_languages), 
             liked_songs = VALUES(liked_songs), 
             recent_plays = VALUES(recent_plays),
-            listening_preferences = VALUES(listening_preferences)";
+            listening_preferences = VALUES(listening_preferences)" . $play_update;
 
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Profile updated successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "Error updating profile: " . $conn->error]);
     }
+} 
+elseif ($action === 'recordPlay') {
+    $email = isset($_GET['email']) ? $conn->real_escape_string(trim($_GET['email'])) : '';
+    if (!empty($email)) {
+        $conn->query("UPDATE user_profiles SET total_plays = GREATEST(COALESCE(total_plays, 0) + 1, 1) WHERE email = '$email'");
+        echo json_encode(["status" => "success"]);
+        exit;
+    }
+    echo json_encode(["status" => "error", "message" => "Email required"]);
+    exit;
 } 
 elseif ($action === 'updateUsername') {
     $data = json_decode(file_get_contents("php://input"), true);
