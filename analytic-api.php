@@ -317,6 +317,99 @@ function getClientIP() {
     return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
 }
 
+// ── Bot & Excluded IP Filtering Utilities ──────────────────────────────────
+function isBotOrCrawler($ip, $currentPage = '') {
+    // 1. LiteSpeed Cache optimizer crawler parameter (e.g. ?LSCWP_CTRL=before_optm)
+    if (!empty($currentPage) && (strpos($currentPage, 'LSCWP_CTRL') !== false || strpos($currentPage, 'before_optm') !== false)) {
+        return true;
+    }
+    if (!empty($_SERVER['QUERY_STRING']) && (strpos($_SERVER['QUERY_STRING'], 'LSCWP_CTRL') !== false || strpos($_SERVER['QUERY_STRING'], 'before_optm') !== false)) {
+        return true;
+    }
+    if (!empty($_SERVER['REQUEST_URI']) && (strpos($_SERVER['REQUEST_URI'], 'LSCWP_CTRL') !== false || strpos($_SERVER['REQUEST_URI'], 'before_optm') !== false)) {
+        return true;
+    }
+
+    // 2. Hostinger Bot IPv6 subnets (AS47583 Hostinger International)
+    if (strpos($ip, '2a02:4780:') === 0 || strpos($ip, '2a02:4787:') === 0) {
+        return true;
+    }
+
+    // 3. User-Agent inspection for automated crawlers and headless browsers
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    if (preg_match('/(bot|crawler|spider|headless|litespeed|lscache|googlebot|bingbot|yandex|duckduckbot|baiduspider)/i', $ua)) {
+        return true;
+    }
+
+    return false;
+}
+
+function getExcludedIpsList($conn) {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'excluded_ips' LIMIT 1");
+    if ($res && $row = $res->fetch_assoc()) {
+        $data = json_decode($row['setting_value'], true);
+        if (is_array($data)) {
+            $cached = $data;
+            return $cached;
+        }
+    }
+    $cached = [];
+    return $cached;
+}
+
+function isIpExcluded($ip, $conn) {
+    if (empty($ip)) return false;
+    $list = getExcludedIpsList($conn);
+    foreach ($list as $item) {
+        $target = is_array($item) ? ($item['ip'] ?? '') : $item;
+        if (strcasecmp(trim($target), trim($ip)) === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function isTrackingBlocked($ip, $currentPage, $conn) {
+    if (isBotOrCrawler($ip, $currentPage)) {
+        return true;
+    }
+    if (isIpExcluded($ip, $conn)) {
+        return true;
+    }
+    return false;
+}
+
+function verifyAdminAuth($conn, $pwd) {
+    if (!$pwd) return false;
+    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
+    if ($res && $row = $res->fetch_assoc()) {
+        $stored_hash = $row['password_hash'];
+        return (md5($pwd) === $stored_hash || $pwd === $stored_hash);
+    }
+    return false;
+}
+
+function buildGuestFilterSql($conn, $tableAlias = '') {
+    $prefix = $tableAlias ? ($tableAlias . '.') : '';
+    $clause = "({$prefix}ip_address NOT LIKE '2a02:4780:%' AND {$prefix}ip_address NOT LIKE '2a02:4787:%' AND {$prefix}current_page NOT LIKE '%LSCWP_CTRL%' AND {$prefix}current_page NOT LIKE '%before_optm%')";
+    
+    $excluded = getExcludedIpsList($conn);
+    $ipList = [];
+    foreach ($excluded as $item) {
+        $ip = is_array($item) ? ($item['ip'] ?? '') : $item;
+        $ip = trim($ip);
+        if ($ip) {
+            $ipList[] = "'" . $conn->real_escape_string($ip) . "'";
+        }
+    }
+    if (!empty($ipList)) {
+        $clause .= " AND {$prefix}ip_address NOT IN (" . implode(',', $ipList) . ")";
+    }
+    return $clause;
+}
+
 // Helper to batch resolve IP locations via cache and fast fallback
 function resolveIPsLocations(array $ips, $conn, $limit = 5) {
     if (empty($ips)) return [];
@@ -427,6 +520,12 @@ if ($action === 'recordPlay') {
     $current_page = $input['current_page'] ?? ('/play?v=' . $video_id);
     $ip = getClientIP();
     
+    // Discard bot & excluded IP tracking
+    if (isTrackingBlocked($ip, $current_page, $conn)) {
+        echo json_encode(['status' => 'ignored', 'reason' => 'bot_or_excluded']);
+        exit();
+    }
+    
     if (!$video_id) returnError("video_id required");
     
     // Overall song analytics
@@ -468,6 +567,12 @@ elseif ($action === 'recordGuestPing') {
     $current_page = $input['current_page'] ?? '';
     $last_search = $input['last_search'] ?? '';
     $ip = getClientIP();
+    
+    // Discard bot & excluded IP tracking
+    if (isTrackingBlocked($ip, $current_page, $conn)) {
+        echo json_encode(['status' => 'ignored', 'reason' => 'bot_or_excluded']);
+        exit();
+    }
     
     if ($guest_id) {
         $stmt = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, total_time_seconds, ip_address, current_page, last_search) VALUES (?, NOW(), NOW(), 0, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_time_seconds = total_time_seconds + ?, ip_address = VALUES(ip_address), current_page = IF(VALUES(current_page) != '', VALUES(current_page), current_page), last_search = IF(VALUES(last_search) != '', VALUES(last_search), last_search), last_active = NOW()");
@@ -520,6 +625,12 @@ elseif ($action === 'recordShare') {
 }
 
 elseif ($action === 'recordTime') {
+    $ip = getClientIP();
+    if (isTrackingBlocked($ip, '', $conn)) {
+        echo json_encode(['status' => 'ignored']);
+        exit();
+    }
+
     $email = $input['email'] ?? null;
     $seconds = (int)($input['seconds'] ?? 0);
     $display_name = $input['display_name'] ?? 'Unknown User';
@@ -688,12 +799,14 @@ elseif ($action === 'getAnalytics') {
         'total_guest_time_seconds' => 0
     ];
 
+    $gFilter = buildGuestFilterSql($conn);
+
     $res = $conn->query("SELECT COUNT(*) as total, 
                          SUM(CASE WHEN last_active >= CURDATE() THEN 1 ELSE 0 END) as active_today,
                          SUM(CASE WHEN last_active >= NOW() - INTERVAL 15 MINUTE THEN 1 ELSE 0 END) as online_now,
                          SUM(total_plays) as total_plays,
                          SUM(total_time_seconds) as total_time
-                         FROM guest_analytics");
+                         FROM guest_analytics WHERE $gFilter");
     if ($res && $row = $res->fetch_assoc()) {
         $guest_summary['total_guests'] = (int)$row['total'];
         $guest_summary['active_guests_today'] = (int)($row['active_today'] ?? 0);
@@ -717,10 +830,10 @@ elseif ($action === 'getAnalytics') {
     $res = $conn->query($guest_songs_q);
     if ($res) while($row = $res->fetch_assoc()) $analytics['guest_top_songs'][] = $row;
 
-    // Recent Active Guests
+    // Recent Active Guests (excluding bots and custom excluded IPs)
     $analytics['recent_guests'] = [];
     $allIps = [];
-    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics ORDER BY last_active DESC LIMIT 100");
+    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics WHERE $gFilter ORDER BY last_active DESC LIMIT 100");
     if ($res) {
         while($row = $res->fetch_assoc()) {
             if (!empty($row['ip_address'])) $allIps[] = $row['ip_address'];
@@ -728,9 +841,9 @@ elseif ($action === 'getAnalytics') {
         }
     }
 
-    // Online Guests (Active in last 15 minutes)
+    // Online Guests (Active in last 15 minutes, excluding bots and custom excluded IPs)
     $analytics['online_guests'] = [];
-    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics WHERE last_active >= NOW() - INTERVAL 15 MINUTE ORDER BY last_active DESC LIMIT 100");
+    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics WHERE last_active >= NOW() - INTERVAL 15 MINUTE AND $gFilter ORDER BY last_active DESC LIMIT 100");
     if ($res) {
         while($row = $res->fetch_assoc()) {
             if (!empty($row['ip_address'])) $allIps[] = $row['ip_address'];
@@ -800,6 +913,8 @@ elseif ($action === 'getGuestGeography') {
             $rangeLabel = "All-Time Active";
             break;
     }
+
+    $whereClause .= " AND " . buildGuestFilterSql($conn, 'g');
 
     // Step 1: Pre-resolve up to 8 uncached IPs for this range so geo cache is populated
     $uRes = $conn->query("SELECT DISTINCT g.ip_address FROM guest_analytics g LEFT JOIN ip_cache c ON g.ip_address = c.ip WHERE g.ip_address != '' AND c.ip IS NULL AND $whereClause LIMIT 8");
@@ -875,6 +990,109 @@ elseif ($action === 'getGuestGeography') {
     exit();
 }
 
+// ── IP Exclusion & Bot Filtering Management ─────────────────────────────────
+elseif ($action === 'getExcludedIps') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    echo json_encode([
+        'status' => 'success',
+        'data' => getExcludedIpsList($conn),
+        'client_ip' => getClientIP()
+    ]);
+    exit();
+}
+
+elseif ($action === 'addExcludedIp') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $ip = trim($input['ip'] ?? ($_GET['ip'] ?? ''));
+    $note = trim($input['note'] ?? ($_GET['note'] ?? ''));
+
+    if (empty($ip)) returnError("IP address is required");
+
+    $list = getExcludedIpsList($conn);
+    $exists = false;
+    foreach ($list as $item) {
+        $target = is_array($item) ? ($item['ip'] ?? '') : $item;
+        if (strcasecmp(trim($target), $ip) === 0) {
+            $exists = true;
+            break;
+        }
+    }
+
+    if (!$exists) {
+        $list[] = [
+            'ip' => $ip,
+            'note' => $note ?: 'Manual Exclusion',
+            'added_at' => date('Y-m-d H:i:s')
+        ];
+        $jsonStr = json_encode(array_values($list));
+        $stmt = $conn->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES ('excluded_ips', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        $stmt->bind_param("s", $jsonStr);
+        $stmt->execute();
+    }
+
+    // Immediately purge any existing guest entries for this IP
+    $delStmt = $conn->prepare("DELETE FROM guest_analytics WHERE ip_address = ?");
+    $delStmt->bind_param("s", $ip);
+    $delStmt->execute();
+    $purged = $delStmt->affected_rows;
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => "IP $ip excluded successfully" . ($purged > 0 ? " ($purged guest records purged)" : ""),
+        'purged_count' => $purged,
+        'data' => $list
+    ]);
+    exit();
+}
+
+elseif ($action === 'removeExcludedIp') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $ip = trim($input['ip'] ?? ($_GET['ip'] ?? ''));
+    if (empty($ip)) returnError("IP address is required");
+
+    $list = getExcludedIpsList($conn);
+    $newList = [];
+    foreach ($list as $item) {
+        $target = is_array($item) ? ($item['ip'] ?? '') : $item;
+        if (strcasecmp(trim($target), $ip) !== 0) {
+            $newList[] = $item;
+        }
+    }
+
+    $jsonStr = json_encode(array_values($newList));
+    $stmt = $conn->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES ('excluded_ips', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+    $stmt->bind_param("s", $jsonStr);
+    $stmt->execute();
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => "IP $ip removed from exclusion list.",
+        'data' => $newList
+    ]);
+    exit();
+}
+
+elseif ($action === 'purgeHostingerBots') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $conn->query("DELETE FROM guest_analytics WHERE ip_address LIKE '2a02:4780:%' OR ip_address LIKE '2a02:4787:%' OR current_page LIKE '%LSCWP_CTRL%' OR current_page LIKE '%before_optm%'");
+    $purged = $conn->affected_rows;
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => "Successfully purged $purged Hostinger bot records from guest analytics.",
+        'purged_count' => $purged
+    ]);
+    exit();
+}
+
 // ── Search Analytics Endpoints ───────────────────────────────────────────────
 elseif ($action === 'recordSearch') {
     $raw_query = trim($input['query'] ?? '');
@@ -895,6 +1113,11 @@ elseif ($action === 'recordSearch') {
     $user_id = trim($input['user_identifier'] ?? '');
     $is_guest = !empty($input['is_guest']) ? 1 : 0;
     $ip = getClientIP();
+
+    if (isTrackingBlocked($ip, '', $conn)) {
+        echo json_encode(['status' => 'ignored']);
+        exit();
+    }
 
     // 1. Raw event log (indexed, pruned)
     $stmt = $conn->prepare("INSERT INTO search_analytics_log (query, clean_query, category, search_type, result_count, user_identifier, is_guest, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -1833,7 +2056,8 @@ elseif ($action === 'getDailySummary') {
         $summary['user_plays'] = max(0, $summary['total_plays'] - $summary['guest_plays']);
 
         // Guest visitors active on this date
-        $stmt = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ?");
+        $dGuestFilter = buildGuestFilterSql($conn);
+        $stmt = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter");
         $stmt->bind_param("s", $target_date);
         $stmt->execute();
         $r = $stmt->get_result()->fetch_assoc();
@@ -1859,7 +2083,7 @@ elseif ($action === 'getDailySummary') {
         }
 
         // Top guests active on this date (by total plays, who were active that day)
-        $stmt = $conn->prepare("SELECT guest_id, total_plays, total_time_seconds, last_song_title, last_video_id, last_active, ip_address, current_page FROM guest_analytics WHERE DATE(last_active) = ? ORDER BY total_plays DESC LIMIT 15");
+        $stmt = $conn->prepare("SELECT guest_id, total_plays, total_time_seconds, last_song_title, last_video_id, last_active, ip_address, current_page FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter ORDER BY total_plays DESC LIMIT 15");
         $stmt->bind_param("s", $target_date);
         $stmt->execute();
         $r = $stmt->get_result();
@@ -1901,7 +2125,7 @@ elseif ($action === 'getDailySummary') {
             $r2 = $stmt2->get_result()->fetch_assoc();
             $day_data['guest_plays'] = (int)($r2['total'] ?? 0);
 
-            $stmt2 = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ?");
+            $stmt2 = $conn->prepare("SELECT COUNT(DISTINCT guest_id) as cnt FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter");
             $stmt2->bind_param("s", $d);
             $stmt2->execute();
             $r2 = $stmt2->get_result()->fetch_assoc();
