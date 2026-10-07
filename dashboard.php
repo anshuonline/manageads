@@ -732,6 +732,10 @@ if ($is_spin_stats_page) {
                             <i class="fas fa-star text-violet-400 text-[11px]"></i>
                             <span>Reviews & Suggestions</span>
                         </a>
+                        <a href="fea-req.php" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white hover:bg-white/[0.03]">
+                            <i class="fas fa-lightbulb text-amber-400 text-[11px]"></i>
+                            <span>Feature Requests</span>
+                        </a>
                     </div>
                 </div>
 

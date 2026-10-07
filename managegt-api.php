@@ -565,6 +565,199 @@ if ($action === 'upload_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+// ── Helper: Ensure Bot Tables Exist ───────────────────────────────────────────
+function ensure_bot_tables_exist($conn) {
+    static $checked = false;
+    if ($checked) return;
+    @$conn->query("CREATE TABLE IF NOT EXISTS bot_curated_playlists (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        spotify_id VARCHAR(100) NOT NULL UNIQUE,
+        spotify_url VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        type ENUM('playlist', 'album') DEFAULT 'playlist',
+        language VARCHAR(50) DEFAULT 'Hindi',
+        cover_image TEXT,
+        total_songs INT DEFAULT 0,
+        songs LONGTEXT,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_lang_status (language, status),
+        INDEX idx_type (type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $checked = true;
+}
+
+// ── Bot Playlists: Get ────────────────────────────────────────────────────────
+if ($action === 'get_bot_playlists') {
+    ensure_bot_tables_exist($conn);
+    $status = $_GET['status'] ?? 'all';
+    $lang = $_GET['lang'] ?? 'all';
+    
+    $where = [];
+    if ($status !== 'all') {
+        $st = $conn->real_escape_string($status);
+        $where[] = "status = '$st'";
+    }
+    if ($lang !== 'all') {
+        $l = $conn->real_escape_string($lang);
+        $where[] = "language = '$l'";
+    }
+    
+    $whereClause = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
+    $sql = "SELECT id, spotify_id, spotify_url, title, type, language, cover_image, total_songs, songs, status, created_at, updated_at 
+            FROM bot_curated_playlists $whereClause ORDER BY id DESC LIMIT 200";
+    $res = $conn->query($sql);
+    $rows = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $row['songs'] = json_decode($row['songs'], true) ?: [];
+            $rows[] = $row;
+        }
+    }
+    echo json_encode(["status" => "success", "data" => $rows]);
+    exit();
+}
+
+// ── Bot Playlists: Approve ─────────────────────────────────────────────────────
+if ($action === 'approve_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensure_bot_tables_exist($conn);
+    $id = (int)($data['id'] ?? 0);
+    $lang = $conn->real_escape_string($data['language'] ?? 'Hindi');
+    $title = isset($data['title']) ? $conn->real_escape_string(trim($data['title'])) : null;
+    
+    if (!$id) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Missing playlist ID"]);
+        exit();
+    }
+    
+    $titleSql = $title ? ", title = '$title'" : "";
+    $sql = "UPDATE bot_curated_playlists SET status = 'approved', language = '$lang' $titleSql WHERE id = $id";
+    if ($conn->query($sql)) {
+        echo json_encode(["status" => "success", "message" => "Playlist approved successfully!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to approve playlist"]);
+    }
+    exit();
+}
+
+// ── Bot Playlists: Reject / Delete ────────────────────────────────────────────
+if ($action === 'reject_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensure_bot_tables_exist($conn);
+    $id = (int)($data['id'] ?? 0);
+    $mode = $data['mode'] ?? 'delete';
+    if (!$id) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Missing playlist ID"]);
+        exit();
+    }
+    if ($mode === 'delete') {
+        $conn->query("DELETE FROM bot_curated_playlists WHERE id = $id");
+        echo json_encode(["status" => "success", "message" => "Playlist deleted"]);
+    } else {
+        $conn->query("UPDATE bot_curated_playlists SET status = 'rejected' WHERE id = $id");
+        echo json_encode(["status" => "success", "message" => "Playlist rejected"]);
+    }
+    exit();
+}
+
+// ── Bot Playlists: Re-shuffle Songs ───────────────────────────────────────────
+if ($action === 'shuffle_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensure_bot_tables_exist($conn);
+    $id = (int)($data['id'] ?? 0);
+    $res = $conn->query("SELECT songs FROM bot_curated_playlists WHERE id = $id");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        $songs = json_decode($row['songs'], true) ?: [];
+        shuffle($songs);
+        $json = $conn->real_escape_string(json_encode($songs));
+        $conn->query("UPDATE bot_curated_playlists SET songs = '$json' WHERE id = $id");
+        echo json_encode(["status" => "success", "message" => "Songs shuffled", "songs" => $songs]);
+    } else {
+        http_response_code(404);
+        echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+    }
+    exit();
+}
+
+// ── Bot Automation Config: Get ────────────────────────────────────────────────
+if ($action === 'get_bot_config') {
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'bot_automation_config'");
+    if ($res && $res->num_rows > 0) {
+        $cfg = json_decode($res->fetch_assoc()['setting_value'], true);
+        echo json_encode(["status" => "success", "config" => $cfg]);
+    } else {
+        $defaultConfig = [
+            "isFullyAuto" => false,
+            "syncIntervalMinutes" => 10,
+            "maxSectionsPerLanguage" => 15,
+            "lastRunTime" => null,
+            "lastRunStatus" => "Never run",
+            "targetSpotifySources" => [
+                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM", "name" => "Hot Hits Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX5cZuAhlNjGz", "name" => "Hot Hits Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "name" => "Today's Top Hits", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWV5T9597oxzN", "name" => "Bhojpuri Superhits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true]
+            ]
+        ];
+        echo json_encode(["status" => "success", "config" => $defaultConfig]);
+    }
+    exit();
+}
+
+// ── Bot Automation Config: Save ───────────────────────────────────────────────
+if ($action === 'save_bot_config' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['config'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Missing config payload"]);
+        exit();
+    }
+    $json = $conn->real_escape_string(json_encode($data['config']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('bot_automation_config', '$json') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql)) {
+        echo json_encode(["status" => "success", "message" => "Bot automation config saved!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to save bot config"]);
+    }
+    exit();
+}
+
+// ── Public Curated Content (For /curated-playlists page) ──────────────────────
+if ($action === 'get_public_curated_content') {
+    ensure_bot_tables_exist($conn);
+    $sql = "SELECT id, spotify_id, title, type, language, cover_image, total_songs, songs, updated_at 
+            FROM bot_curated_playlists WHERE status = 'approved' ORDER BY updated_at DESC LIMIT 150";
+    $res = $conn->query($sql);
+    $items = [];
+    $languages = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $row['songs'] = json_decode($row['songs'], true) ?: [];
+            $lang = $row['language'] ?: 'Hindi';
+            if (!in_array($lang, $languages)) {
+                $languages[] = $lang;
+            }
+            $items[] = $row;
+        }
+    }
+    echo json_encode([
+        "status" => "success",
+        "items" => $items,
+        "languages" => $languages
+    ]);
+    exit();
+}
+
+// ── Trigger Manual Bot Run from Admin ─────────────────────────────────────────
+if ($action === 'trigger_bot_run') {
+    include_once 'spotify-bot-cron.php';
+    exit();
+}
+
 http_response_code(404);
 echo json_encode(["status" => "error", "message" => "Action not found"]);
 ?>
