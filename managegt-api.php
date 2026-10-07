@@ -313,6 +313,81 @@ if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
+// ── Submit Feature Request ───────────────────────────────────────────────────
+if ($action === 'submit_feature_request' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $title = trim($conn->real_escape_string($data['title'] ?? ''));
+    $description = trim($conn->real_escape_string($data['description'] ?? ''));
+    $category = trim($conn->real_escape_string($data['category'] ?? 'General'));
+    $user_name = trim($conn->real_escape_string($data['user_name'] ?? 'Guest'));
+    $user_email = trim($conn->real_escape_string($data['user_email'] ?? ''));
+
+    if (empty($title) || empty($description)) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Feature title and description are required"]);
+        exit();
+    }
+
+    // Get IP
+    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip = explode(',', $ip)[0];
+    
+    // Fetch Location
+    $location = 'Unknown';
+    if ($ip && $ip !== '::1' && $ip !== '127.0.0.1') {
+        $ch = curl_init("http://ip-api.com/json/" . trim($ip));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        $res = curl_exec($ch);
+        curl_close($ch);
+        if ($res) {
+            $geo = json_decode($res, true);
+            if ($geo && isset($geo['status']) && $geo['status'] === 'success') {
+                $location = $geo['city'] . ', ' . $geo['regionName'] . ', ' . $geo['country'];
+            }
+        }
+    }
+    
+    $location = $conn->real_escape_string($location);
+
+    // Auto-create table if not exists
+    try {
+        $conn->query("CREATE TABLE IF NOT EXISTS feature_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT NOT NULL,
+            category VARCHAR(100) DEFAULT 'General',
+            user_name VARCHAR(255) DEFAULT 'Guest',
+            user_email VARCHAR(255) DEFAULT '',
+            status ENUM('pending', 'planned', 'in_progress', 'completed', 'declined') DEFAULT 'pending',
+            admin_notes TEXT,
+            ip_address VARCHAR(50) DEFAULT '',
+            location VARCHAR(255) DEFAULT 'Unknown',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    } catch (Exception $e) {
+        // Ignore table exists error
+    }
+
+    $sql = "INSERT INTO feature_requests (title, description, category, user_name, user_email, ip_address, location) 
+            VALUES ('$title', '$description', '$category', '$user_name', '$user_email', '$ip', '$location')";
+    
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode([
+            "status" => "success", 
+            "message" => "Feature request submitted successfully",
+            "id" => $conn->insert_id
+        ]);
+    } else {
+        http_response_code(500);
+        echo json_encode([
+            "status" => "error", 
+            "message" => "Failed to save feature request", 
+            "sql_error" => $conn->error
+        ]);
+    }
+    exit();
+}
+
 // ── Playlists ────────────────────────────────────────────────────────────────
 
 if ($action === 'get_playlists') {
