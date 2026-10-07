@@ -13,6 +13,30 @@ ini_set('memory_limit', '256M');
 
 require_once 'config.php';
 
+// Disable strict exceptions so queries fail gracefully with error messages rather than raw HTML Fatal Errors
+mysqli_report(MYSQLI_REPORT_OFF);
+
+// Helper: Auto-reconnecting database handler to prevent 'MySQL server has gone away'
+function get_db_conn() {
+    global $db_host, $db_user, $db_pass, $db_name, $conn;
+    if ($conn instanceof mysqli) {
+        try {
+            if (@$conn->ping()) {
+                return $conn;
+            }
+        } catch (Throwable $e) {}
+    }
+    // Re-connect fresh
+    $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+    if ($conn->connect_error) {
+        die(json_encode(["status" => "error", "message" => "Database reconnection failed: " . $conn->connect_error]));
+    }
+    $conn->set_charset("utf8mb4");
+    @$conn->query("SET time_zone = '+05:30'");
+    @$conn->query("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
+    return $conn;
+}
+
 // Security check: CLI, internal call, or secret token over HTTP
 $isCli = (php_sapi_name() === 'cli');
 $token = $_GET['token'] ?? '';
@@ -25,8 +49,9 @@ if (!$isCli && !$isInternal && $token !== 'gt_cron_bot') {
 }
 
 // Helper: Ensure bot table exists
-function ensure_bot_tables($conn) {
-    $conn->query("CREATE TABLE IF NOT EXISTS bot_curated_playlists (
+function ensure_bot_tables() {
+    $c = get_db_conn();
+    $c->query("CREATE TABLE IF NOT EXISTS bot_curated_playlists (
         id INT AUTO_INCREMENT PRIMARY KEY,
         spotify_id VARCHAR(100) NOT NULL UNIQUE,
         spotify_url VARCHAR(255) NOT NULL,
@@ -44,9 +69,10 @@ function ensure_bot_tables($conn) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 
-ensure_bot_tables($conn);
+ensure_bot_tables();
 
 // ── 1. Load Bot Automation Config ─────────────────────────────────────────────
+$conn = get_db_conn();
 $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'bot_automation_config'");
 $config = [];
 if ($res && $res->num_rows > 0) {
@@ -218,9 +244,9 @@ foreach ($targetSources as $source) {
     $cover = $scraped['coverImage'];
     $language = $source['defaultLang'] ?? 'Hindi';
 
-    // Match top 35 songs on YouTube Music
+    // Match top 20 songs on YouTube Music
     $matchedSongs = [];
-    $candidateTracks = array_slice($scraped['tracks'], 0, 35);
+    $candidateTracks = array_slice($scraped['tracks'], 0, 20);
 
     foreach ($candidateTracks as $track) {
         $matched = match_ytmusic_song($track['query']);
@@ -228,7 +254,7 @@ foreach ($targetSources as $source) {
             $matchedSongs[] = $matched;
         }
         // Small pause to prevent rate-limiting
-        usleep(150000); // 150ms
+        usleep(40000); // 40ms
     }
 
     if (count($matchedSongs) < 3) {
@@ -239,6 +265,7 @@ foreach ($targetSources as $source) {
     // Shuffle songs as requested by user
     shuffle($matchedSongs);
 
+    $conn = get_db_conn();
     $status = $isFullyAuto ? 'approved' : 'pending';
     $totalSongs = count($matchedSongs);
     $songsJson = $conn->real_escape_string(json_encode($matchedSongs));
@@ -275,6 +302,7 @@ foreach ($targetSources as $source) {
 
 // ── 3. Run Bot 2: Section Manager (Enforce Max 15 Sections Per Language) ──────
 $sectionLog = [];
+$conn = get_db_conn();
 $resSec = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
 $customSections = [];
 if ($resSec && $resSec->num_rows > 0) {
@@ -282,6 +310,7 @@ if ($resSec && $resSec->num_rows > 0) {
 }
 
 // Fetch all approved playlists to sync to sections
+$conn = get_db_conn();
 $resApproved = $conn->query("SELECT title, language, songs FROM bot_curated_playlists WHERE status = 'approved' ORDER BY updated_at DESC LIMIT 60");
 $approvedByLang = [];
 if ($resApproved) {
@@ -331,12 +360,14 @@ foreach ($approvedByLang as $lang => $plList) {
 }
 
 if ($sectionsModified) {
+    $conn = get_db_conn();
     $secJson = $conn->real_escape_string(json_encode($customSections));
     $conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_sections', '$secJson')
                   ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
 }
 
 // ── 4. Update Bot Last Run Status ─────────────────────────────────────────────
+$conn = get_db_conn();
 $config['lastRunTime'] = date('Y-m-d H:i:s');
 $config['lastRunStatus'] = "Success: processed {$processedCount} playlists. Sections synced.";
 $cfgJson = $conn->real_escape_string(json_encode($config));
