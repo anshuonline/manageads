@@ -97,13 +97,10 @@ $defaultCatalog = [
     ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXVJK4aT7pmk", "name" => "Hot Hits Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
     ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXIH9p38y8bH", "name" => "Punjabi 101", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
     ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX4O5xsX2eM5S", "name" => "Punjabi Swag", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
-    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VbT1Q", "name" => "Diljit Dosanjh Hits", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
-    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO16uK7Z", "name" => "Karan Aujla Essentials", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWY4lgr763P0d", "name" => "Hot Punjabi Hits", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
 
     // ── BHOJPURI ──
     ["url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or", "name" => "Shilpi Raj Hit Songs", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
-    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3d0Y1F", "name" => "Pawan Singh Superhits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
-    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1w4N3P", "name" => "Khesari Lal Yadav Hits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
     ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXb4uJg0t6M5Q", "name" => "Bhojpuri Dhamaka Beats", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
 
     // ── ENGLISH ──
