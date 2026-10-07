@@ -114,6 +114,28 @@ $targetSources = $config['targetSpotifySources'] ?? [
     ]
 ];
 
+// Auto-migrate legacy/broken Spotify URLs if present in database config
+$migrated = false;
+foreach ($targetSources as &$src) {
+    if (strpos($src['url'] ?? '', '37i9dQZF1DX5cZuAhlNjGz') !== false) {
+        $src['url'] = 'https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX';
+        $src['name'] = 'RAP 91 Punjabi';
+        $migrated = true;
+    }
+    if (strpos($src['url'] ?? '', '37i9dQZF1DWV5T9597oxzN') !== false || strpos($src['url'] ?? '', '37i9dQZF1DX3qF9424jLdY') !== false) {
+        $src['url'] = 'https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or';
+        $src['name'] = 'Shilpi Raj Hit Songs';
+        $migrated = true;
+    }
+}
+unset($src);
+
+if ($migrated) {
+    $config['targetSpotifySources'] = $targetSources;
+    $cJson = $conn->real_escape_string(json_encode($config));
+    $conn->query("UPDATE app_settings SET setting_value = '$cJson' WHERE setting_key = 'bot_automation_config'");
+}
+
 // Helper: Scrape Spotify Embed for tracks & cover
 function scrape_spotify_entity($url) {
     $type = 'playlist';
