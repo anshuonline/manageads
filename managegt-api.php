@@ -604,6 +604,13 @@ if ($action === 'get_bot_playlists') {
         $where[] = "language = '$l'";
     }
     
+    // Also fetch custom_sections to flag inHomeSection
+    $secRes = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
+    $customSections = [];
+    if ($secRes && $secRes->num_rows > 0) {
+        $customSections = json_decode($secRes->fetch_assoc()['setting_value'], true) ?: [];
+    }
+
     $whereClause = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
     $sql = "SELECT id, spotify_id, spotify_url, title, type, language, cover_image, total_songs, songs, status, created_at, updated_at 
             FROM bot_curated_playlists $whereClause ORDER BY id DESC LIMIT 200";
@@ -612,6 +619,20 @@ if ($action === 'get_bot_playlists') {
     if ($res) {
         while ($row = $res->fetch_assoc()) {
             $row['songs'] = json_decode($row['songs'], true) ?: [];
+            $pLang = $row['language'] ?: 'Hindi';
+            $pId = (int)$row['id'];
+            $pTitle = $row['title'];
+            
+            $inHome = false;
+            if (isset($customSections[$pLang]) && is_array($customSections[$pLang])) {
+                foreach ($customSections[$pLang] as $cs) {
+                    if (($cs['botPlaylistId'] ?? 0) === $pId || strcasecmp($cs['title'] ?? '', $pTitle) === 0) {
+                        $inHome = true;
+                        break;
+                    }
+                }
+            }
+            $row['inHomeSection'] = $inHome;
             $rows[] = $row;
         }
     }
@@ -619,12 +640,13 @@ if ($action === 'get_bot_playlists') {
     exit();
 }
 
-// ── Bot Playlists: Approve ─────────────────────────────────────────────────────
+// ── Bot Playlists: Approve & Add to Home Section ─────────────────────────────
 if ($action === 'approve_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     ensure_bot_tables_exist($conn);
     $id = (int)($data['id'] ?? 0);
     $lang = $conn->real_escape_string($data['language'] ?? 'Hindi');
     $title = isset($data['title']) ? $conn->real_escape_string(trim($data['title'])) : null;
+    $addToHomeSection = !isset($data['addToHomeSection']) || !empty($data['addToHomeSection']);
     
     if (!$id) {
         http_response_code(400);
@@ -632,14 +654,175 @@ if ($action === 'approve_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST')
         exit();
     }
     
+    $fetchRes = $conn->query("SELECT title, songs FROM bot_curated_playlists WHERE id = $id");
+    if (!$fetchRes || $fetchRes->num_rows === 0) {
+        http_response_code(404);
+        echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+        exit();
+    }
+    $plData = $fetchRes->fetch_assoc();
+    $finalTitle = $title ?: $plData['title'];
+    $songs = json_decode($plData['songs'], true) ?: [];
+    
     $titleSql = $title ? ", title = '$title'" : "";
     $sql = "UPDATE bot_curated_playlists SET status = 'approved', language = '$lang' $titleSql WHERE id = $id";
     if ($conn->query($sql)) {
-        echo json_encode(["status" => "success", "message" => "Playlist approved successfully!"]);
+        $addedToSection = false;
+        
+        // Immediately add to Home Feed sections if requested
+        if ($addToHomeSection && count($songs) >= 3) {
+            $secRes = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
+            $customSections = [];
+            if ($secRes && $secRes->num_rows > 0) {
+                $customSections = json_decode($secRes->fetch_assoc()['setting_value'], true) ?: [];
+            }
+            if (!isset($customSections[$lang])) {
+                $customSections[$lang] = [];
+            }
+            
+            // Check if section already exists
+            $exists = false;
+            foreach ($customSections[$lang] as &$cs) {
+                if (strcasecmp($cs['title'] ?? '', $finalTitle) === 0 || ($cs['botPlaylistId'] ?? 0) === $id) {
+                    $cs['songs'] = array_slice($songs, 0, 15);
+                    $cs['isBot'] = true;
+                    $cs['botPlaylistId'] = $id;
+                    $exists = true;
+                    $addedToSection = true;
+                    break;
+                }
+            }
+            unset($cs);
+            
+            if (!$exists) {
+                array_unshift($customSections[$lang], [
+                    'title' => $finalTitle,
+                    'songs' => array_slice($songs, 0, 15),
+                    'isBot' => true,
+                    'botPlaylistId' => $id
+                ]);
+                $addedToSection = true;
+            }
+            
+            // Enforce max 15 sections per language (trimming older bot sections only)
+            $maxSections = 15;
+            if (count($customSections[$lang]) > $maxSections) {
+                $excess = count($customSections[$lang]) - $maxSections;
+                $filtered = [];
+                $removed = 0;
+                for ($i = count($customSections[$lang]) - 1; $i >= 0; $i--) {
+                    $s = $customSections[$lang][$i];
+                    if (!empty($s['isBot']) && $removed < $excess) {
+                        $removed++;
+                        continue;
+                    }
+                    $filtered[] = $s;
+                }
+                $customSections[$lang] = array_reverse($filtered);
+                if (count($customSections[$lang]) > $maxSections) {
+                    $customSections[$lang] = array_slice($customSections[$lang], 0, $maxSections);
+                }
+            }
+            
+            $secJson = $conn->real_escape_string(json_encode($customSections));
+            $conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_sections', '$secJson')
+                          ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        }
+        
+        echo json_encode([
+            "status" => "success", 
+            "message" => "Playlist approved successfully!" . ($addedToSection ? " Added to Home Feed ($lang)." : ""),
+            "addedToSection" => $addedToSection
+        ]);
     } else {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => "Failed to approve playlist"]);
     }
+    exit();
+}
+
+// ── Bot Playlists: Toggle Home Feed Section ───────────────────────────────────
+if ($action === 'toggle_home_section' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    ensure_bot_tables_exist($conn);
+    $id = (int)($data['id'] ?? 0);
+    $enable = !empty($data['enable']);
+    
+    if (!$id) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Missing playlist ID"]);
+        exit();
+    }
+    
+    $res = $conn->query("SELECT title, language, songs FROM bot_curated_playlists WHERE id = $id");
+    if (!$res || $res->num_rows === 0) {
+        http_response_code(404);
+        echo json_encode(["status" => "error", "message" => "Playlist not found"]);
+        exit();
+    }
+    $pl = $res->fetch_assoc();
+    $lang = $pl['language'] ?: 'Hindi';
+    $title = $pl['title'];
+    $songs = json_decode($pl['songs'], true) ?: [];
+    
+    $secRes = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");
+    $customSections = [];
+    if ($secRes && $secRes->num_rows > 0) {
+        $customSections = json_decode($secRes->fetch_assoc()['setting_value'], true) ?: [];
+    }
+    if (!isset($customSections[$lang])) {
+        $customSections[$lang] = [];
+    }
+    
+    if ($enable) {
+        $exists = false;
+        foreach ($customSections[$lang] as &$cs) {
+            if (strcasecmp($cs['title'] ?? '', $title) === 0 || ($cs['botPlaylistId'] ?? 0) === $id) {
+                $cs['songs'] = array_slice($songs, 0, 15);
+                $cs['isBot'] = true;
+                $cs['botPlaylistId'] = $id;
+                $exists = true;
+                break;
+            }
+        }
+        unset($cs);
+        if (!$exists) {
+            array_unshift($customSections[$lang], [
+                'title' => $title,
+                'songs' => array_slice($songs, 0, 15),
+                'isBot' => true,
+                'botPlaylistId' => $id
+            ]);
+        }
+        if (count($customSections[$lang]) > 15) {
+            $excess = count($customSections[$lang]) - 15;
+            $filtered = [];
+            $removed = 0;
+            for ($i = count($customSections[$lang]) - 1; $i >= 0; $i--) {
+                $s = $customSections[$lang][$i];
+                if (!empty($s['isBot']) && $removed < $excess) {
+                    $removed++;
+                    continue;
+                }
+                $filtered[] = $s;
+            }
+            $customSections[$lang] = array_reverse($filtered);
+            if (count($customSections[$lang]) > 15) {
+                $customSections[$lang] = array_slice($customSections[$lang], 0, 15);
+            }
+        }
+    } else {
+        $customSections[$lang] = array_values(array_filter($customSections[$lang], function($cs) use ($title, $id) {
+            if (($cs['botPlaylistId'] ?? 0) === $id) return false;
+            if (strcasecmp($cs['title'] ?? '', $title) === 0 && !empty($cs['isBot'])) return false;
+            return true;
+        }));
+    }
+    
+    $secJson = $conn->real_escape_string(json_encode($customSections));
+    $conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('custom_sections', '$secJson')
+                  ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+                  
+    echo json_encode(["status" => "success", "inHomeSection" => $enable]);
     exit();
 }
 
@@ -685,8 +868,36 @@ if ($action === 'shuffle_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST')
 // ── Bot Automation Config: Get ────────────────────────────────────────────────
 if ($action === 'get_bot_config') {
     $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'bot_automation_config'");
+    $defaultSources = [
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM", "name" => "Hot Hits Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX", "name" => "RAP 91 Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "name" => "Today's Top Hits", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or", "name" => "Shilpi Raj Hit Songs", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true]
+    ];
+
     if ($res && $res->num_rows > 0) {
-        $cfg = json_decode($res->fetch_assoc()['setting_value'], true);
+        $cfg = json_decode($res->fetch_assoc()['setting_value'], true) ?: [];
+        // Auto-migrate legacy/broken Spotify URLs in existing config
+        $migrated = false;
+        if (!empty($cfg['targetSpotifySources'])) {
+            foreach ($cfg['targetSpotifySources'] as &$src) {
+                if (strpos($src['url'] ?? '', '37i9dQZF1DX5cZuAhlNjGz') !== false) {
+                    $src['url'] = 'https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX';
+                    $src['name'] = 'RAP 91 Punjabi';
+                    $migrated = true;
+                }
+                if (strpos($src['url'] ?? '', '37i9dQZF1DWV5T9597oxzN') !== false || strpos($src['url'] ?? '', '37i9dQZF1DX3qF9424jLdY') !== false) {
+                    $src['url'] = 'https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or';
+                    $src['name'] = 'Shilpi Raj Hit Songs';
+                    $migrated = true;
+                }
+            }
+            unset($src);
+            if ($migrated) {
+                $cJson = $conn->real_escape_string(json_encode($cfg));
+                $conn->query("UPDATE app_settings SET setting_value = '$cJson' WHERE setting_key = 'bot_automation_config'");
+            }
+        }
         echo json_encode(["status" => "success", "config" => $cfg]);
     } else {
         $defaultConfig = [
@@ -695,12 +906,7 @@ if ($action === 'get_bot_config') {
             "maxSectionsPerLanguage" => 15,
             "lastRunTime" => null,
             "lastRunStatus" => "Never run",
-            "targetSpotifySources" => [
-                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM", "name" => "Hot Hits Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
-                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX5cZuAhlNjGz", "name" => "Hot Hits Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
-                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "name" => "Today's Top Hits", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
-                ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWV5T9597oxzN", "name" => "Bhojpuri Superhits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true]
-            ]
+            "targetSpotifySources" => $defaultSources
         ];
         echo json_encode(["status" => "success", "config" => $defaultConfig]);
     }

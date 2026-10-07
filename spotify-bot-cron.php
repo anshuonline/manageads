@@ -92,8 +92,8 @@ $targetSources = $config['targetSpotifySources'] ?? [
         "enabled" => true
     ],
     [
-        "url" => "https://open.spotify.com/playlist/37i9dQZF1DX5cZuAhlNjGz",
-        "name" => "Hot Hits Punjabi",
+        "url" => "https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX",
+        "name" => "RAP 91 Punjabi",
         "defaultLang" => "Punjabi",
         "type" => "playlist",
         "enabled" => true
@@ -106,8 +106,8 @@ $targetSources = $config['targetSpotifySources'] ?? [
         "enabled" => true
     ],
     [
-        "url" => "https://open.spotify.com/playlist/37i9dQZF1DWV5T9597oxzN",
-        "name" => "Bhojpuri Superhits",
+        "url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or",
+        "name" => "Shilpi Raj Hit Songs",
         "defaultLang" => "Bhojpuri",
         "type" => "playlist",
         "enabled" => true
@@ -282,7 +282,7 @@ foreach ($targetSources as $source) {
                 total_songs = VALUES(total_songs),
                 songs = VALUES(songs),
                 language = VALUES(language),
-                status = IF(status = 'rejected', 'pending', VALUES(status))";
+                status = IF(status = 'approved', 'approved', IF(status = 'rejected', 'pending', VALUES(status)))";
 
     if ($conn->query($sql)) {
         $processedCount++;
@@ -339,10 +339,11 @@ foreach ($approvedByLang as $lang => $plList) {
         }
 
         if (!$exists && count($pl['songs']) >= 4) {
-            // Add new section at the beginning
+            // Add new section at the beginning, marked as isBot = true
             array_unshift($customSections[$lang], [
                 'title' => $secTitle,
-                'songs' => array_slice($pl['songs'], 0, 15)
+                'songs' => array_slice($pl['songs'], 0, 15),
+                'isBot' => true
             ]);
             $sectionsModified = true;
             $sectionLog[] = "Added section '{$secTitle}' to language '{$lang}'";
@@ -350,12 +351,26 @@ foreach ($approvedByLang as $lang => $plList) {
     }
 
     // STRICT USER RULE: Enforce MAX 15 sections per language (except dynamic)
+    // Only trim older bot sections so manual admin sections are 100% protected!
     if (count($customSections[$lang]) > $maxSections) {
-        $trimmed = array_slice($customSections[$lang], 0, $maxSections);
-        $diff = count($customSections[$lang]) - $maxSections;
-        $customSections[$lang] = $trimmed;
+        $excess = count($customSections[$lang]) - $maxSections;
+        $filtered = [];
+        $removed = 0;
+        for ($i = count($customSections[$lang]) - 1; $i >= 0; $i--) {
+            $s = $customSections[$lang][$i];
+            if (!empty($s['isBot']) && $removed < $excess) {
+                $removed++;
+                continue; // Trim this older bot section
+            }
+            $filtered[] = $s;
+        }
+        $customSections[$lang] = array_reverse($filtered);
+
+        if (count($customSections[$lang]) > $maxSections) {
+            $customSections[$lang] = array_slice($customSections[$lang], 0, $maxSections);
+        }
         $sectionsModified = true;
-        $sectionLog[] = "Enforced limit: trimmed {$diff} older sections for '{$lang}' to maintain max {$maxSections}";
+        $sectionLog[] = "Enforced limit: trimmed {$removed} older bot sections for '{$lang}' to maintain max {$maxSections}";
     }
 }
 
