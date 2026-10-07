@@ -2071,8 +2071,8 @@ elseif ($action === 'getDailySummary') {
         $guest_plays_sec = (int)round($summary['guest_plays'] * 205);
         $user_plays_sec = (int)round($summary['user_plays'] * 205);
 
-        $summary['guest_play_seconds'] = max($guest_pings_sec, $guest_plays_sec);
-        $summary['user_play_seconds'] = max($user_pings_sec, $user_plays_sec);
+        $summary['guest_play_seconds'] = ($summary['guest_plays'] === 0) ? 0 : max($guest_pings_sec, $guest_plays_sec);
+        $summary['user_play_seconds'] = ($summary['user_plays'] === 0) ? 0 : max($user_pings_sec, $user_plays_sec);
         $summary['total_play_seconds'] = $summary['guest_play_seconds'] + $summary['user_play_seconds'];
         $summary['guest_play_hours'] = round($summary['guest_play_seconds'] / 3600, 1);
         $summary['user_play_hours'] = round($summary['user_play_seconds'] / 3600, 1);
@@ -2165,8 +2165,8 @@ elseif ($action === 'getDailySummary') {
             $d_gplay_sec = (int)round($day_data['guest_plays'] * 205);
             $d_uplay_sec = (int)round($day_data['user_plays'] * 205);
 
-            $d_guest_sec = max($d_gp_sec, $d_gplay_sec);
-            $d_user_sec = max($d_up_sec, $d_uplay_sec);
+            $d_guest_sec = ($day_data['guest_plays'] === 0) ? 0 : max($d_gp_sec, $d_gplay_sec);
+            $d_user_sec = ($day_data['user_plays'] === 0) ? 0 : max($d_up_sec, $d_uplay_sec);
             $d_total_sec = $d_guest_sec + $d_user_sec;
 
             $day_data['guest_play_seconds'] = $d_guest_sec;
