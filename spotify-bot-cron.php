@@ -83,57 +83,49 @@ $isFullyAuto = !empty($config['isFullyAuto']);
 $maxSections = (int)($config['maxSectionsPerLanguage'] ?? 15);
 if ($maxSections <= 0) $maxSections = 15;
 
-$targetSources = $config['targetSpotifySources'] ?? [
-    [
-        "url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM",
-        "name" => "Hot Hits Hindi",
-        "defaultLang" => "Hindi",
-        "type" => "playlist",
-        "enabled" => true
-    ],
-    [
-        "url" => "https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX",
-        "name" => "RAP 91 Punjabi",
-        "defaultLang" => "Punjabi",
-        "type" => "playlist",
-        "enabled" => true
-    ],
-    [
-        "url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-        "name" => "Today's Top Hits",
-        "defaultLang" => "English",
-        "type" => "playlist",
-        "enabled" => true
-    ],
-    [
-        "url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or",
-        "name" => "Shilpi Raj Hit Songs",
-        "defaultLang" => "Bhojpuri",
-        "type" => "playlist",
-        "enabled" => true
-    ]
+$defaultCatalog = [
+    // ── HINDI ──
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM", "name" => "Hot Hits Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWZNJXX2UeBij", "name" => "Bollywood Butter", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX6mtHgWvv6qT", "name" => "Hindi Romantic Hits", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX8tZ9q9498t6", "name" => "Bollywood Dance Beats", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX7rOY2t2wQUR", "name" => "Retro Classics Bollywood", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXd8hn3lm57wa", "name" => "New Music Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+    
+    // ── PUNJABI ──
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX", "name" => "RAP 91 Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXVJK4aT7pmk", "name" => "Hot Hits Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXIH9p38y8bH", "name" => "Punjabi 101", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX4O5xsX2eM5S", "name" => "Punjabi Swag", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VbT1Q", "name" => "Diljit Dosanjh Hits", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO16uK7Z", "name" => "Karan Aujla Essentials", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+
+    // ── BHOJPURI ──
+    ["url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or", "name" => "Shilpi Raj Hit Songs", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3d0Y1F", "name" => "Pawan Singh Superhits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1w4N3P", "name" => "Khesari Lal Yadav Hits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXb4uJg0t6M5Q", "name" => "Bhojpuri Dhamaka Beats", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+
+    // ── ENGLISH ──
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "name" => "Today's Top Hits", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWUa8ZRTfalHk", "name" => "Pop Rising", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXbYM3nMM0oPk", "name" => "Mega Hit Mix", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX2M1R2ehBRuh", "name" => "All Out 2020s", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX2L0iB23Enbq", "name" => "Viral Hits Global", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+
+    // ── HARYANVI ──
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXdK0W61n4n2e", "name" => "Haryanvi Hits", "defaultLang" => "Haryanvi", "type" => "playlist", "enabled" => true],
+    ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWYgL55Y9Q54E", "name" => "Desi Haryanvi Swag", "defaultLang" => "Haryanvi", "type" => "playlist", "enabled" => true]
 ];
 
-// Auto-migrate legacy/broken Spotify URLs if present in database config
-$migrated = false;
-foreach ($targetSources as &$src) {
-    if (strpos($src['url'] ?? '', '37i9dQZF1DX5cZuAhlNjGz') !== false) {
-        $src['url'] = 'https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX';
-        $src['name'] = 'RAP 91 Punjabi';
-        $migrated = true;
-    }
-    if (strpos($src['url'] ?? '', '37i9dQZF1DWV5T9597oxzN') !== false || strpos($src['url'] ?? '', '37i9dQZF1DX3qF9424jLdY') !== false) {
-        $src['url'] = 'https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or';
-        $src['name'] = 'Shilpi Raj Hit Songs';
-        $migrated = true;
-    }
-}
-unset($src);
-
-if ($migrated) {
-    $config['targetSpotifySources'] = $targetSources;
+// If targetSpotifySources is missing or only has legacy 4 sources, expand to full catalog
+if (empty($config['targetSpotifySources']) || count($config['targetSpotifySources']) <= 4) {
+    $targetSources = $defaultCatalog;
+    $config['targetSpotifySources'] = $defaultCatalog;
     $cJson = $conn->real_escape_string(json_encode($config));
     $conn->query("UPDATE app_settings SET setting_value = '$cJson' WHERE setting_key = 'bot_automation_config'");
+} else {
+    $targetSources = $config['targetSpotifySources'];
 }
 
 // Helper: Scrape Spotify Embed for tracks & cover
@@ -245,11 +237,95 @@ function match_ytmusic_song($query) {
 }
 
 // ── 2. Run Bot 1: Fetch and Match Playlists ──────────────────────────────────
+// ── 2. Run Bot 1: Fetch and Match Playlists (Random Fresh Batch Rotation) ───
 $log = [];
 $processedCount = 0;
 $newlyApprovedPlaylists = [];
 
-foreach ($targetSources as $source) {
+// Determine batch size (default 3 to 4 playlists per 10-minute cron run)
+$batchSize = (int)($config['playlistsPerRun'] ?? 4);
+if ($batchSize <= 0) $batchSize = 4;
+
+$enabledSources = array_values(array_filter($targetSources, function($s) {
+    return !empty($s['enabled']) && !empty($s['url']);
+}));
+
+// Fetch all existing playlist IDs in database to prioritize fresh/unscraped sources
+$conn = get_db_conn();
+$existingInDb = [];
+$resExisting = $conn->query("SELECT spotify_id, spotify_url, status FROM bot_curated_playlists");
+if ($resExisting) {
+    while ($r = $resExisting->fetch_assoc()) {
+        $existingInDb[] = [
+            'id' => $r['spotify_id'],
+            'url' => $r['spotify_url'],
+            'status' => $r['status']
+        ];
+    }
+}
+
+// Separate enabled sources into:
+// 1. Fresh sources (not yet in DB or not pending)
+// 2. Pending sources (already waiting in queue for review)
+$freshSources = [];
+$pendingSources = [];
+
+foreach ($enabledSources as $src) {
+    $srcUrl = $src['url'];
+    $isPending = false;
+    foreach ($existingInDb as $e) {
+        if ($e['status'] === 'pending') {
+            if (strpos($srcUrl, $e['id']) !== false || strpos($srcUrl, $e['url']) !== false) {
+                $isPending = true;
+                break;
+            }
+        }
+    }
+    if ($isPending) {
+        $pendingSources[] = $src;
+    } else {
+        $freshSources[] = $src;
+    }
+}
+
+// Randomly shuffle both pools so selection is completely dynamic and non-deterministic
+shuffle($freshSources);
+shuffle($pendingSources);
+
+// Prioritize fresh sources first, then other sources
+$candidates = array_merge($freshSources, $pendingSources);
+
+// Pick balanced batch across different languages first
+$selectedBatch = [];
+$usedLanguages = [];
+
+foreach ($candidates as $cand) {
+    $cLang = $cand['defaultLang'] ?? 'Hindi';
+    if (!in_array($cLang, $usedLanguages)) {
+        $selectedBatch[] = $cand;
+        $usedLanguages[] = $cLang;
+        if (count($selectedBatch) >= $batchSize) break;
+    }
+}
+
+// Fill remaining slots up to batch size if needed
+if (count($selectedBatch) < $batchSize) {
+    foreach ($candidates as $cand) {
+        if (!in_array($cand, $selectedBatch, true)) {
+            $selectedBatch[] = $cand;
+            if (count($selectedBatch) >= $batchSize) break;
+        }
+    }
+}
+
+if (empty($selectedBatch)) {
+    $selectedBatch = array_slice($enabledSources, 0, $batchSize);
+}
+
+// Final shuffle of the selected batch
+shuffle($selectedBatch);
+
+foreach ($selectedBatch as $source) {
     if (empty($source['enabled'])) continue;
     $sUrl = $source['url'] ?? '';
     if (empty($sUrl)) continue;

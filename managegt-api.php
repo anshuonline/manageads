@@ -868,35 +868,48 @@ if ($action === 'shuffle_bot_playlist' && $_SERVER['REQUEST_METHOD'] === 'POST')
 // ── Bot Automation Config: Get ────────────────────────────────────────────────
 if ($action === 'get_bot_config') {
     $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'bot_automation_config'");
-    $defaultSources = [
+    $defaultCatalog = [
+        // ── HINDI ──
         ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX0XUfTFmNBRM", "name" => "Hot Hits Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWZNJXX2UeBij", "name" => "Bollywood Butter", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX6mtHgWvv6qT", "name" => "Hindi Romantic Hits", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX8tZ9q9498t6", "name" => "Bollywood Dance Beats", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX7rOY2t2wQUR", "name" => "Retro Classics Bollywood", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXd8hn3lm57wa", "name" => "New Music Hindi", "defaultLang" => "Hindi", "type" => "playlist", "enabled" => true],
+        
+        // ── PUNJABI ──
         ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX", "name" => "RAP 91 Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXVJK4aT7pmk", "name" => "Hot Hits Punjabi", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWXIH9p38y8bH", "name" => "Punjabi 101", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX4O5xsX2eM5S", "name" => "Punjabi Swag", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VbT1Q", "name" => "Diljit Dosanjh Hits", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO16uK7Z", "name" => "Karan Aujla Essentials", "defaultLang" => "Punjabi", "type" => "playlist", "enabled" => true],
+
+        // ── BHOJPURI ──
+        ["url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or", "name" => "Shilpi Raj Hit Songs", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3d0Y1F", "name" => "Pawan Singh Superhits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1w4N3P", "name" => "Khesari Lal Yadav Hits", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXb4uJg0t6M5Q", "name" => "Bhojpuri Dhamaka Beats", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true],
+
+        // ── ENGLISH ──
         ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "name" => "Today's Top Hits", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
-        ["url" => "https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or", "name" => "Shilpi Raj Hit Songs", "defaultLang" => "Bhojpuri", "type" => "playlist", "enabled" => true]
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWUa8ZRTfalHk", "name" => "Pop Rising", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXbYM3nMM0oPk", "name" => "Mega Hit Mix", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX2M1R2ehBRuh", "name" => "All Out 2020s", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DX2L0iB23Enbq", "name" => "Viral Hits Global", "defaultLang" => "English", "type" => "playlist", "enabled" => true],
+
+        // ── HARYANVI ──
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DXdK0W61n4n2e", "name" => "Haryanvi Hits", "defaultLang" => "Haryanvi", "type" => "playlist", "enabled" => true],
+        ["url" => "https://open.spotify.com/playlist/37i9dQZF1DWYgL55Y9Q54E", "name" => "Desi Haryanvi Swag", "defaultLang" => "Haryanvi", "type" => "playlist", "enabled" => true]
     ];
 
     if ($res && $res->num_rows > 0) {
         $cfg = json_decode($res->fetch_assoc()['setting_value'], true) ?: [];
-        // Auto-migrate legacy/broken Spotify URLs in existing config
-        $migrated = false;
-        if (!empty($cfg['targetSpotifySources'])) {
-            foreach ($cfg['targetSpotifySources'] as &$src) {
-                if (strpos($src['url'] ?? '', '37i9dQZF1DX5cZuAhlNjGz') !== false) {
-                    $src['url'] = 'https://open.spotify.com/playlist/37i9dQZF1DWTqYqGLu7kTX';
-                    $src['name'] = 'RAP 91 Punjabi';
-                    $migrated = true;
-                }
-                if (strpos($src['url'] ?? '', '37i9dQZF1DWV5T9597oxzN') !== false || strpos($src['url'] ?? '', '37i9dQZF1DX3qF9424jLdY') !== false) {
-                    $src['url'] = 'https://open.spotify.com/playlist/5OpU68bGSGh1Tka774Z1Or';
-                    $src['name'] = 'Shilpi Raj Hit Songs';
-                    $migrated = true;
-                }
-            }
-            unset($src);
-            if ($migrated) {
-                $cJson = $conn->real_escape_string(json_encode($cfg));
-                $conn->query("UPDATE app_settings SET setting_value = '$cJson' WHERE setting_key = 'bot_automation_config'");
-            }
+        // If config only has legacy 4 sources, automatically expand to the 24+ catalog
+        if (empty($cfg['targetSpotifySources']) || count($cfg['targetSpotifySources']) <= 4) {
+            $cfg['targetSpotifySources'] = $defaultCatalog;
+            $cJson = $conn->real_escape_string(json_encode($cfg));
+            $conn->query("UPDATE app_settings SET setting_value = '$cJson' WHERE setting_key = 'bot_automation_config'");
         }
         echo json_encode(["status" => "success", "config" => $cfg]);
     } else {
@@ -906,7 +919,7 @@ if ($action === 'get_bot_config') {
             "maxSectionsPerLanguage" => 15,
             "lastRunTime" => null,
             "lastRunStatus" => "Never run",
-            "targetSpotifySources" => $defaultSources
+            "targetSpotifySources" => $defaultCatalog
         ];
         echo json_encode(["status" => "success", "config" => $defaultConfig]);
     }
