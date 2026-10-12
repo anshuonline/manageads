@@ -748,7 +748,7 @@ elseif ($action === 'getAnalytics') {
     if ($res) while($row = $res->fetch_assoc()) $analytics['top_users'][] = $row;
     
     // Get Complete User Profiles Details for Detailed Display
-    $res = $conn->query("SELECT email, display_name, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 100");
+    $res = $conn->query("SELECT email, display_name, photo_url, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 200");
     $analytics['detailed_users'] = [];
     if ($res) while($row = $res->fetch_assoc()) $analytics['detailed_users'][] = $row;
     

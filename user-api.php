@@ -26,23 +26,36 @@ if ($col_check_plays && $col_check_plays->num_rows == 0) {
     @$conn->query("ALTER TABLE user_profiles ADD COLUMN total_plays INT UNSIGNED DEFAULT 0");
 }
 
+// Ensure photo_url column exists
+$col_check_photo = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'photo_url'");
+if ($col_check_photo && $col_check_photo->num_rows == 0) {
+    @$conn->query("ALTER TABLE user_profiles ADD COLUMN photo_url VARCHAR(500) DEFAULT NULL");
+}
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 if ($action === 'getProfile') {
     $email = isset($_GET['email']) ? $conn->real_escape_string(trim($_GET['email'])) : '';
     $name = isset($_GET['name']) ? $conn->real_escape_string(trim($_GET['name'])) : '';
+    $photo = isset($_GET['photo']) ? $conn->real_escape_string(trim($_GET['photo'])) : '';
     
     if (empty($email)) {
         echo json_encode(["status" => "error", "message" => "Email is required"]);
         exit;
     }
 
-    $sql = "SELECT display_name, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent, total_plays FROM user_profiles WHERE email = '$email'";
+    $sql = "SELECT display_name, photo_url, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent, total_plays FROM user_profiles WHERE email = '$email'";
     $result = $conn->query($sql);
 
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
         
+        // Update photo_url if a fresh one is provided
+        if (!empty($photo) && (empty($row['photo_url']) || $row['photo_url'] !== $photo)) {
+            $conn->query("UPDATE user_profiles SET photo_url = '$photo' WHERE email = '$email'");
+            $row['photo_url'] = $photo;
+        }
+
         // If user never received the welcome email (e.g. first-time login), send it!
         if (empty($row['welcome_email_sent']) || (int)$row['welcome_email_sent'] === 0) {
             $displayName = !empty($name) ? $name : (!empty($row['display_name']) ? $row['display_name'] : '');
@@ -65,6 +78,7 @@ if ($action === 'getProfile') {
         echo json_encode([
             "status" => "success",
             "display_name" => $row['display_name'],
+            "photo_url" => $row['photo_url'] ?? null,
             "preferred_languages" => json_decode($row['preferred_languages']),
             "liked_songs" => json_decode($row['liked_songs']),
             "recent_plays" => $recentPlays,
@@ -74,7 +88,8 @@ if ($action === 'getProfile') {
     } else {
         // Auto-create user in DB on first-time signup
         $cleanName = !empty($name) ? "'$name'" : "NULL";
-        $insert_sql = "INSERT INTO user_profiles (email, display_name, welcome_email_sent) VALUES ('$email', $cleanName, 1) ON DUPLICATE KEY UPDATE welcome_email_sent = 1";
+        $cleanPhoto = !empty($photo) ? "'$photo'" : "NULL";
+        $insert_sql = "INSERT INTO user_profiles (email, display_name, photo_url, welcome_email_sent) VALUES ('$email', $cleanName, $cleanPhoto, 1) ON DUPLICATE KEY UPDATE welcome_email_sent = 1, photo_url = COALESCE(VALUES(photo_url), photo_url)";
         $conn->query($insert_sql);
         
         // Dispatch beautiful Hostinger SMTP welcome email
@@ -84,6 +99,7 @@ if ($action === 'getProfile') {
             "status" => "success",
             "message" => "User created, welcome email sent, returning defaults.",
             "display_name" => !empty($name) ? $name : null,
+            "photo_url" => !empty($photo) ? $photo : null,
             "preferred_languages" => null,
             "liked_songs" => null,
             "recent_plays" => null,
@@ -194,7 +210,7 @@ elseif ($action === 'updateUsername') {
     }
 }
 elseif ($action === 'getAllUsers') {
-    $sql = "SELECT email, preferred_languages, liked_songs, recent_plays, listening_preferences, created_at, updated_at FROM user_profiles ORDER BY created_at DESC";
+    $sql = "SELECT email, display_name, photo_url, preferred_languages, liked_songs, recent_plays, listening_preferences, created_at, updated_at FROM user_profiles ORDER BY created_at DESC";
     $result = $conn->query($sql);
     $users = [];
 
