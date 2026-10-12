@@ -744,11 +744,11 @@ elseif ($action === 'getAnalytics') {
     if ($res) while($row = $res->fetch_assoc()) $analytics['most_shared'][] = $row;
     
     // Get Top Users
-    $res = $conn->query("SELECT * FROM user_analytics ORDER BY total_time_spent_seconds DESC LIMIT 100");
+    $res = $conn->query("SELECT ua.*, up.photo_url FROM user_analytics ua LEFT JOIN user_profiles up ON ua.email = up.email ORDER BY ua.total_time_spent_seconds DESC LIMIT 100");
     if ($res) while($row = $res->fetch_assoc()) $analytics['top_users'][] = $row;
     
     // Get Complete User Profiles Details for Detailed Display
-    $res = $conn->query("SELECT email, display_name, photo_url, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 200");
+    $res = $conn->query("SELECT email, display_name, photo_url, created_at, updated_at FROM user_profiles ORDER BY created_at DESC LIMIT 500");
     $analytics['detailed_users'] = [];
     if ($res) while($row = $res->fetch_assoc()) $analytics['detailed_users'][] = $row;
     
