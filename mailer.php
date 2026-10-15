@@ -221,7 +221,8 @@ class GanaTubeMailer {
     }
 
     /**
-     * Build the Ultra-Modern AMOLED Dark Purple & Pink Welcome Email Template
+     * Build the Ultra-Modern AMOLED Dark Red Welcome Email Template
+     * Following GanaTube Official Design System (#F50919, #0A0A0A, #141414)
      * Featuring Recommended Songs, Popular Artists, and Clickable Interactive Controls
      */
     public static function getWelcomeEmailHtml($name = '') {
@@ -262,7 +263,7 @@ class GanaTubeMailer {
                 <!-- Track ' . ($idx + 1) . ': ' . $title . ' -->
                 <tr>
                   <td style="padding-bottom: ' . $paddingBottom . ';">
-                    <a href="https://ganatube.in/?play=' . $vid . '" target="_blank" style="display: block; text-decoration: none; background: #13101e; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 12px 14px;">
+                    <a href="https://ganatube.in/?play=' . $vid . '" target="_blank" style="display: block; text-decoration: none; background: #161616; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 12px 14px;">
                       <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                         <tr>
                           <!-- Thumbnail -->
@@ -278,7 +279,7 @@ class GanaTubeMailer {
                           <td width="42" align="right" valign="middle" style="width: 42px; min-width: 42px;">
                             <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="right" style="margin: 0;">
                               <tr>
-                                <td align="center" valign="middle" width="38" height="38" style="width: 38px; height: 38px; min-width: 38px; min-height: 38px; border-radius: 50%; background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); box-shadow: 0 4px 14px rgba(236, 72, 153, 0.45); text-align: center; vertical-align: middle;">
+                                <td align="center" valign="middle" width="38" height="38" style="width: 38px; height: 38px; min-width: 38px; min-height: 38px; border-radius: 50%; background: linear-gradient(135deg, #FF0019 0%, #D90816 100%); box-shadow: 0 4px 14px rgba(245, 9, 25, 0.45); text-align: center; vertical-align: middle;">
                                   <span style="color: #ffffff !important; font-size: 15px; line-height: 38px; font-weight: bold; font-family: Arial, Helvetica, sans-serif; display: inline-block; margin-left: 2px; text-decoration: none;">&#9658;&#xFE0E;</span>
                                 </td>
                               </tr>
@@ -308,8 +309,8 @@ class GanaTubeMailer {
     table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
     img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
     body { margin: 0; padding: 0; width: 100% !important; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    a { color: #ec4899; text-decoration: none; }
-    .track-row:hover { background-color: #1a1529 !important; border-color: rgba(236, 72, 153, 0.4) !important; }
+    a { color: #F50919; text-decoration: none; }
+    .track-row:hover { background-color: #1e1e1e !important; border-color: rgba(245, 9, 25, 0.45) !important; }
     .artist-card:hover { transform: translateY(-2px); }
   </style>
 </head>
@@ -321,25 +322,37 @@ class GanaTubeMailer {
       <td align="center">
 
         <!-- Main Card Container (Max 600px) -->
-        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #0a0812; border: 1px solid rgba(168, 85, 247, 0.28); border-radius: 24px; overflow: hidden; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 50px rgba(168, 85, 247, 0.18);">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #0A0A0A; border: 1px solid rgba(245, 9, 25, 0.28); border-radius: 24px; overflow: hidden; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 50px rgba(245, 9, 25, 0.15);">
           
           <!-- Top Signature Gradient Bar -->
           <tr>
-            <td height="4" style="background: linear-gradient(90deg, #a855f7 0%, #ec4899 50%, #a855f7 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+            <td height="4" style="background: linear-gradient(90deg, #FF0019 0%, #F50919 50%, #C4000F 100%); font-size: 0; line-height: 0;">&nbsp;</td>
           </tr>
 
           <!-- Header / Brand Section -->
           <tr>
             <td align="center" style="padding: 36px 24px 16px 24px;">
-              <a href="https://ganatube.in" target="_blank" style="text-decoration: none; display: inline-block;">
-                <img 
-                  src="https://i.ibb.co/zVFjH9J5/ganatubenewlogo.png" 
-                  alt="GanaTube" 
-                  width="185" 
-                  style="display: block; width: 185px; max-width: 100%; height: auto; border: 0; outline: none; margin: 0 auto;" 
-                />
-              </a>
-              <div style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-top: 12px; font-weight: 600;">
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin: 0 auto;">
+                <tr>
+                  <td valign="middle" style="padding-right: 12px;">
+                    <a href="https://ganatube.in" target="_blank" style="text-decoration: none; display: block;">
+                      <img 
+                        src="https://ganatube.in/ganatube-logo.png" 
+                        alt="GanaTube Logo" 
+                        width="46" 
+                        height="46" 
+                        style="display: block; width: 46px; height: 46px; border-radius: 12px; box-shadow: 0 4px 18px rgba(245, 9, 25, 0.5); border: 0;" 
+                      />
+                    </a>
+                  </td>
+                  <td valign="middle" align="left">
+                    <a href="https://ganatube.in" target="_blank" style="text-decoration: none; display: block;">
+                      <span style="font-size: 28px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1;">GanaTube<span style="color: #F50919;">.in</span></span>
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <div style="font-size: 11px; letter-spacing: 3.5px; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); margin-top: 12px; font-weight: 700;">
                 Pure High-Fidelity Music Streaming
               </div>
             </td>
@@ -350,9 +363,9 @@ class GanaTubeMailer {
             <td align="center" style="padding: 0 24px;">
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td align="center" style="background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 999px; padding: 6px 18px;">
-                    <span style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #ec4899;">
-                      ✨ EXCLUSIVE ACCESS UNLOCKED
+                  <td align="center" style="background: rgba(245, 9, 25, 0.12); border: 1px solid rgba(245, 9, 25, 0.35); border-radius: 999px; padding: 6px 18px;">
+                    <span style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #F50919;">
+                      ✨ VIP ACCESS UNLOCKED &bull; 100% AD-FREE
                     </span>
                   </td>
                 </tr>
@@ -377,9 +390,9 @@ class GanaTubeMailer {
             <td align="center" style="padding: 16px 24px 28px 24px;">
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td align="center" style="border-radius: 14px; background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); box-shadow: 0 10px 30px rgba(236, 72, 153, 0.45);">
-                    <a href="https://ganatube.in" target="_blank" style="display: inline-block; padding: 16px 36px; font-size: 15px; font-weight: 800; color: #ffffff; text-decoration: none; letter-spacing: 0.5px; border-radius: 14px;">
-                      ▶ Open GanaTube & Start Playing &rarr;
+                  <td align="center" style="border-radius: 14px; background: linear-gradient(135deg, #FF0019 0%, #C4000F 100%); box-shadow: 0 10px 30px rgba(245, 9, 25, 0.45); border: 1px solid rgba(255, 255, 255, 0.15);">
+                    <a href="https://ganatube.in" target="_blank" style="display: inline-block; padding: 15px 44px; font-size: 16px; font-weight: 800; color: #ffffff; text-decoration: none; letter-spacing: 0.5px; border-radius: 14px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);">
+                      Explore Now
                     </a>
                   </td>
                 </tr>
@@ -400,7 +413,7 @@ class GanaTubeMailer {
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td>
-                    <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #ec4899; margin-bottom: 4px;">
+                    <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #F50919; margin-bottom: 4px;">
                       🔥 TOP STREAMING ON GANATUBE
                     </div>
                     <div style="font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: -0.3px;">
@@ -431,7 +444,7 @@ class GanaTubeMailer {
                ══════════════════════════════════════════════ -->
           <tr>
             <td style="padding: 26px 28px 14px 28px;">
-              <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #a855f7; margin-bottom: 4px;">
+              <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #F50919; margin-bottom: 4px;">
                 🌟 FEATURED ARTISTS
               </div>
               <div style="font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: -0.3px;">
@@ -452,13 +465,13 @@ class GanaTubeMailer {
                       <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center">
                         <tr>
                           <td align="center">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Arijit_Singh_performance_at_Chandigarh_2025.jpg/500px-Arijit_Singh_performance_at_Chandigarh_2025.jpg" alt="Arijit Singh" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #a855f7; box-shadow: 0 6px 15px rgba(168, 85, 247, 0.35);" />
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Arijit_Singh_performance_at_Chandigarh_2025.jpg/500px-Arijit_Singh_performance_at_Chandigarh_2025.jpg" alt="Arijit Singh" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #F50919; box-shadow: 0 6px 15px rgba(245, 9, 25, 0.35);" />
                           </td>
                         </tr>
                         <tr>
                           <td align="center" style="padding-top: 8px;">
                             <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.2;">Arijit Singh</div>
-                            <div style="font-size: 11px; color: #ec4899; margin-top: 2px; font-weight: 600;">Explore &rarr;</div>
+                            <div style="font-size: 11px; color: #F50919; margin-top: 2px; font-weight: 700;">Explore &rarr;</div>
                           </td>
                         </tr>
                       </table>
@@ -471,13 +484,13 @@ class GanaTubeMailer {
                       <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center">
                         <tr>
                           <td align="center">
-                            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRV2uQTlBVTPRmPczCJ3ebYPPCiNXdskveCjApGGsiYHwhT8wFhNWrShJg-mjpRrnzFyUia504oAXU38CiDUN1pHbTZlcaNTA-AATVEBTWi-w&s=10" alt="Shreya Ghoshal" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #ec4899; box-shadow: 0 6px 15px rgba(236, 72, 153, 0.35);" />
+                            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRV2uQTlBVTPRmPczCJ3ebYPPCiNXdskveCjApGGsiYHwhT8wFhNWrShJg-mjpRrnzFyUia504oAXU38CiDUN1pHbTZlcaNTA-AATVEBTWi-w&s=10" alt="Shreya Ghoshal" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #F50919; box-shadow: 0 6px 15px rgba(245, 9, 25, 0.35);" />
                           </td>
                         </tr>
                         <tr>
                           <td align="center" style="padding-top: 8px;">
                             <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.2;">Shreya Ghoshal</div>
-                            <div style="font-size: 11px; color: #ec4899; margin-top: 2px; font-weight: 600;">Explore &rarr;</div>
+                            <div style="font-size: 11px; color: #F50919; margin-top: 2px; font-weight: 700;">Explore &rarr;</div>
                           </td>
                         </tr>
                       </table>
@@ -490,13 +503,13 @@ class GanaTubeMailer {
                       <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center">
                         <tr>
                           <td align="center">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/e/e2/Diljit_Dosanjh.jpg" alt="Diljit Dosanjh" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #a855f7; box-shadow: 0 6px 15px rgba(168, 85, 247, 0.35);" />
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/e/e2/Diljit_Dosanjh.jpg" alt="Diljit Dosanjh" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #F50919; box-shadow: 0 6px 15px rgba(245, 9, 25, 0.35);" />
                           </td>
                         </tr>
                         <tr>
                           <td align="center" style="padding-top: 8px;">
                             <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.2;">Diljit Dosanjh</div>
-                            <div style="font-size: 11px; color: #ec4899; margin-top: 2px; font-weight: 600;">Explore &rarr;</div>
+                            <div style="font-size: 11px; color: #F50919; margin-top: 2px; font-weight: 700;">Explore &rarr;</div>
                           </td>
                         </tr>
                       </table>
@@ -509,13 +522,13 @@ class GanaTubeMailer {
                       <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center">
                         <tr>
                           <td align="center">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_%283%29.png/500px-Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_%283%29.png" alt="Taylor Swift" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #ec4899; box-shadow: 0 6px 15px rgba(236, 72, 153, 0.35);" />
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_%283%29.png/500px-Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_%283%29.png" alt="Taylor Swift" width="70" height="70" style="display: block; width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #F50919; box-shadow: 0 6px 15px rgba(245, 9, 25, 0.35);" />
                           </td>
                         </tr>
                         <tr>
                           <td align="center" style="padding-top: 8px;">
                             <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.2;">Taylor Swift</div>
-                            <div style="font-size: 11px; color: #ec4899; margin-top: 2px; font-weight: 600;">Explore &rarr;</div>
+                            <div style="font-size: 11px; color: #F50919; margin-top: 2px; font-weight: 700;">Explore &rarr;</div>
                           </td>
                         </tr>
                       </table>
@@ -543,22 +556,22 @@ class GanaTubeMailer {
               <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center">
                 <tr>
                   <td style="padding: 4px;">
-                    <a href="https://ganatube.in/search?q=Trending%20Songs" target="_blank" style="display: inline-block; background: #161224; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
+                    <a href="https://ganatube.in/search?q=Trending%20Songs" target="_blank" style="display: inline-block; background: #181818; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
                       🔥 Trending
                     </a>
                   </td>
                   <td style="padding: 4px;">
-                    <a href="https://ganatube.in/rooms" target="_blank" style="display: inline-block; background: #161224; border: 1px solid rgba(236, 72, 153, 0.3); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ec4899; text-decoration: none;">
+                    <a href="https://ganatube.in/rooms" target="_blank" style="display: inline-block; background: #181818; border: 1px solid rgba(245, 9, 25, 0.35); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #F50919; text-decoration: none;">
                       👥 Live Rooms
                     </a>
                   </td>
                   <td style="padding: 4px;">
-                    <a href="https://ganatube.in/search?q=Lofi%20Chill" target="_blank" style="display: inline-block; background: #161224; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
+                    <a href="https://ganatube.in/search?q=Lofi%20Chill" target="_blank" style="display: inline-block; background: #181818; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
                       🌙 Lo-Fi Chill
                     </a>
                   </td>
                   <td style="padding: 4px;">
-                    <a href="https://ganatube.in/search?q=Party%20Hits" target="_blank" style="display: inline-block; background: #161224; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
+                    <a href="https://ganatube.in/search?q=Party%20Hits" target="_blank" style="display: inline-block; background: #181818; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 8px 16px; font-size: 12px; font-weight: 700; color: #ffffff; text-decoration: none;">
                       🎉 Party Hits
                     </a>
                   </td>
@@ -574,7 +587,7 @@ class GanaTubeMailer {
             <td style="padding: 20px 28px;">
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td width="48%" style="background: #110e1c; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 14px;">
+                  <td width="48%" style="background: #141414; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px;">
                     <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                       <tr>
                         <td width="30" valign="top" style="font-size: 18px;">🚫</td>
@@ -586,7 +599,7 @@ class GanaTubeMailer {
                     </table>
                   </td>
                   <td width="4%">&nbsp;</td>
-                  <td width="48%" style="background: #110e1c; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 14px;">
+                  <td width="48%" style="background: #141414; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px;">
                     <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                       <tr>
                         <td width="30" valign="top" style="font-size: 18px;">🎧</td>
@@ -611,7 +624,7 @@ class GanaTubeMailer {
                     <p style="margin: 0; font-size: 13px; color: rgba(255, 255, 255, 0.65); line-height: 1.5;">
                       Got feedback, questions or song recommendations? We would love to hear from you.
                       <br>
-                      Write directly to our team anytime at <a href="mailto:support@ganatube.in" style="color: #ec4899; text-decoration: none; font-weight: 700;">support@ganatube.in</a>
+                      Write directly to our team anytime at <a href="mailto:support@ganatube.in" style="color: #F50919; text-decoration: none; font-weight: 700;">support@ganatube.in</a>
                     </p>
                   </td>
                 </tr>
@@ -630,7 +643,7 @@ class GanaTubeMailer {
               <div style="font-size: 12px; color: rgba(255, 255, 255, 0.4); line-height: 1.6;">
                 You received this email because you signed up on <a href="https://ganatube.in" style="color: rgba(255, 255, 255, 0.65); text-decoration: underline;">ganatube.in</a>.
                 <br>
-                Made with <span style="color: #ec4899;">&hearts;</span> for music lovers across India and the world.
+                Made with <span style="color: #F50919;">&hearts;</span> for music lovers across India and the world.
               </div>
               <div style="font-size: 11px; color: rgba(255, 255, 255, 0.25); margin-top: 14px; letter-spacing: 0.5px;">
                 &copy; ' . date('Y') . ' GanaTube Media. All rights reserved.
