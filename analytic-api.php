@@ -46,7 +46,15 @@ if (isset($_GET['setup']) && $_GET['setup'] === '1') {
         total_plays INT DEFAULT 0,
         total_time_seconds INT DEFAULT 0,
         last_song_title VARCHAR(255) DEFAULT '',
-        last_video_id VARCHAR(50) DEFAULT ''
+        last_video_id VARCHAR(50) DEFAULT '',
+        ip_address VARCHAR(45) DEFAULT '',
+        location VARCHAR(150) DEFAULT '',
+        current_page VARCHAR(255) DEFAULT '',
+        last_search VARCHAR(255) DEFAULT '',
+        device_type VARCHAR(50) DEFAULT '',
+        os VARCHAR(50) DEFAULT '',
+        browser VARCHAR(50) DEFAULT '',
+        screen_size VARCHAR(50) DEFAULT ''
     )");
     $conn->query("CREATE TABLE IF NOT EXISTS guest_song_analytics (
         video_id VARCHAR(50) PRIMARY KEY,
@@ -91,6 +99,16 @@ if (!$schema_check || $schema_check->num_rows === 0) {
     )");
     @$conn->query("ALTER TABLE guest_analytics ADD INDEX idx_guest_ip (ip_address)");
     @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('guest_schema_v2', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
+}
+
+// ── Guest Schema v3 Auto-Migration Guard (Device Info & Screen Size) ──
+$schema_check_v3 = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'guest_schema_v3' LIMIT 1");
+if (!$schema_check_v3 || $schema_check_v3->num_rows === 0) {
+    @$conn->query("ALTER TABLE guest_analytics ADD COLUMN device_type VARCHAR(50) DEFAULT ''");
+    @$conn->query("ALTER TABLE guest_analytics ADD COLUMN os VARCHAR(50) DEFAULT ''");
+    @$conn->query("ALTER TABLE guest_analytics ADD COLUMN browser VARCHAR(50) DEFAULT ''");
+    @$conn->query("ALTER TABLE guest_analytics ADD COLUMN screen_size VARCHAR(50) DEFAULT ''");
+    @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('guest_schema_v3', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
 }
 
 // ── Search Analytics Schema Auto-Migration Guard ──
@@ -552,8 +570,12 @@ if ($action === 'recordPlay') {
         $g_daily->execute();
         
         if ($guest_id) {
-            $g_usr = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, last_song_title, last_video_id, ip_address, current_page) VALUES (?, NOW(), NOW(), 1, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_plays = total_plays + 1, last_song_title = VALUES(last_song_title), last_video_id = VALUES(last_video_id), ip_address = VALUES(ip_address), current_page = VALUES(current_page), last_active = NOW()");
-            $g_usr->bind_param("sssss", $guest_id, $title, $video_id, $ip, $current_page);
+            $device_type = trim($input['device_type'] ?? '');
+            $os = trim($input['os'] ?? '');
+            $browser = trim($input['browser'] ?? '');
+            $screen_size = trim($input['screen_size'] ?? '');
+            $g_usr = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, last_song_title, last_video_id, ip_address, current_page, device_type, os, browser, screen_size) VALUES (?, NOW(), NOW(), 1, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_plays = total_plays + 1, last_song_title = VALUES(last_song_title), last_video_id = VALUES(last_video_id), ip_address = VALUES(ip_address), current_page = VALUES(current_page), device_type = IF(VALUES(device_type) != '', VALUES(device_type), device_type), os = IF(VALUES(os) != '', VALUES(os), os), browser = IF(VALUES(browser) != '', VALUES(browser), browser), screen_size = IF(VALUES(screen_size) != '', VALUES(screen_size), screen_size), last_active = NOW()");
+            $g_usr->bind_param("sssssssss", $guest_id, $title, $video_id, $ip, $current_page, $device_type, $os, $browser, $screen_size);
             $g_usr->execute();
         }
     }
@@ -566,6 +588,10 @@ elseif ($action === 'recordGuestPing') {
     $seconds = (int)($input['seconds'] ?? 60);
     $current_page = $input['current_page'] ?? '';
     $last_search = $input['last_search'] ?? '';
+    $device_type = trim($input['device_type'] ?? '');
+    $os = trim($input['os'] ?? '');
+    $browser = trim($input['browser'] ?? '');
+    $screen_size = trim($input['screen_size'] ?? '');
     $ip = getClientIP();
     
     // Discard bot & excluded IP tracking
@@ -575,8 +601,8 @@ elseif ($action === 'recordGuestPing') {
     }
     
     if ($guest_id) {
-        $stmt = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, total_time_seconds, ip_address, current_page, last_search) VALUES (?, NOW(), NOW(), 0, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_time_seconds = total_time_seconds + ?, ip_address = VALUES(ip_address), current_page = IF(VALUES(current_page) != '', VALUES(current_page), current_page), last_search = IF(VALUES(last_search) != '', VALUES(last_search), last_search), last_active = NOW()");
-        $stmt->bind_param("sisssi", $guest_id, $seconds, $ip, $current_page, $last_search, $seconds);
+        $stmt = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, total_time_seconds, ip_address, current_page, last_search, device_type, os, browser, screen_size) VALUES (?, NOW(), NOW(), 0, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_time_seconds = total_time_seconds + ?, ip_address = VALUES(ip_address), current_page = IF(VALUES(current_page) != '', VALUES(current_page), current_page), last_search = IF(VALUES(last_search) != '', VALUES(last_search), last_search), device_type = IF(VALUES(device_type) != '', VALUES(device_type), device_type), os = IF(VALUES(os) != '', VALUES(os), os), browser = IF(VALUES(browser) != '', VALUES(browser), browser), screen_size = IF(VALUES(screen_size) != '', VALUES(screen_size), screen_size), last_active = NOW()");
+        $stmt->bind_param("sisssssssi", $guest_id, $seconds, $ip, $current_page, $last_search, $device_type, $os, $browser, $screen_size, $seconds);
         $stmt->execute();
 
         // Hourly user activity ping
@@ -833,7 +859,7 @@ elseif ($action === 'getAnalytics') {
     // Recent Active Guests (excluding bots and custom excluded IPs)
     $analytics['recent_guests'] = [];
     $allIps = [];
-    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics WHERE $gFilter ORDER BY last_active DESC LIMIT 100");
+    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search, device_type, os, browser, screen_size FROM guest_analytics WHERE $gFilter ORDER BY last_active DESC LIMIT 100");
     if ($res) {
         while($row = $res->fetch_assoc()) {
             if (!empty($row['ip_address'])) $allIps[] = $row['ip_address'];
@@ -843,7 +869,7 @@ elseif ($action === 'getAnalytics') {
 
     // Online Guests (Active in last 15 minutes, excluding bots and custom excluded IPs)
     $analytics['online_guests'] = [];
-    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search FROM guest_analytics WHERE last_active >= NOW() - INTERVAL 15 MINUTE AND $gFilter ORDER BY last_active DESC LIMIT 100");
+    $res = $conn->query("SELECT guest_id, first_seen, last_active, total_plays, total_time_seconds, last_song_title, last_video_id, ip_address, current_page, last_search, device_type, os, browser, screen_size FROM guest_analytics WHERE last_active >= NOW() - INTERVAL 15 MINUTE AND $gFilter ORDER BY last_active DESC LIMIT 100");
     if ($res) {
         while($row = $res->fetch_assoc()) {
             if (!empty($row['ip_address'])) $allIps[] = $row['ip_address'];
@@ -2106,7 +2132,7 @@ elseif ($action === 'getDailySummary') {
         }
 
         // Top guests active on this date (by total plays, who were active that day)
-        $stmt = $conn->prepare("SELECT guest_id, total_plays, total_time_seconds, last_song_title, last_video_id, last_active, ip_address, current_page FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter ORDER BY total_plays DESC LIMIT 15");
+        $stmt = $conn->prepare("SELECT guest_id, total_plays, total_time_seconds, last_song_title, last_video_id, last_active, ip_address, current_page, device_type, os, browser, screen_size FROM guest_analytics WHERE DATE(last_active) = ? AND $dGuestFilter ORDER BY total_plays DESC LIMIT 15");
         $stmt->bind_param("s", $target_date);
         $stmt->execute();
         $r = $stmt->get_result();
