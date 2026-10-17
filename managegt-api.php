@@ -165,6 +165,9 @@ if ($action === 'app_init') {
     // Popups
     $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_popups'");
     $result['popups'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : new stdClass();
+    // Blocked Content
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'blocked_content'");
+    $result['blocked_content'] = ($res && $res->num_rows > 0) ? json_decode($res->fetch_assoc()['setting_value'], true) : [];
 
     echo json_encode($result);
     $conn->close();
@@ -477,6 +480,37 @@ if ($action === 'save_popups' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => "Failed to write popups to database."]);
+    }
+    exit();
+}
+
+// ── Blocked Content / Filter ──────────────────────────────────────────────────
+
+if ($action === 'get_blocked_content') {
+    $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'blocked_content'");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        echo $row['setting_value'] ?: json_encode([]);
+    } else {
+        echo json_encode([]);
+    }
+    exit();
+}
+
+if ($action === 'save_blocked_content' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($data['blockedContent'])) {
+        http_response_code(400);
+        echo json_encode(["status" => "error", "message" => "Invalid payload — missing blockedContent"]);
+        exit();
+    }
+    $json_data = $conn->real_escape_string(json_encode($data['blockedContent']));
+    $sql = "INSERT INTO app_settings (setting_key, setting_value) VALUES ('blocked_content', '$json_data') 
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+    if ($conn->query($sql) === TRUE) {
+        echo json_encode(["status" => "success", "message" => "Blocked content saved successfully!"]);
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "Failed to write blocked content to database."]);
     }
     exit();
 }
