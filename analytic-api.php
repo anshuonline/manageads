@@ -1016,6 +1016,192 @@ elseif ($action === 'getGuestGeography') {
     exit();
 }
 
+elseif ($action === 'getGuestDevices') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $range = $_GET['range'] ?? 'dau'; // 'dau', 'wau', 'mau', 'yau', 'all'
+    
+    switch ($range) {
+        case 'dau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 1 DAY";
+            $rangeLabel = "Daily Active (Last 24 Hours)";
+            break;
+        case 'wau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 7 DAY";
+            $rangeLabel = "Weekly Active (Last 7 Days)";
+            break;
+        case 'mau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 30 DAY";
+            $rangeLabel = "Monthly Active (Last 30 Days)";
+            break;
+        case 'yau':
+            $whereClause = "g.last_active >= NOW() - INTERVAL 1 YEAR";
+            $rangeLabel = "Yearly Active (Last 365 Days)";
+            break;
+        case 'all':
+        default:
+            $range = 'all';
+            $whereClause = "1=1";
+            $rangeLabel = "All-Time Active";
+            break;
+    }
+
+    $whereClause .= " AND " . buildGuestFilterSql($conn, 'g');
+
+    // 1. Total Audience in Range
+    $totalSql = "SELECT COUNT(DISTINCT g.guest_id) as total_guests, COALESCE(SUM(g.total_plays), 0) as total_plays, COALESCE(SUM(g.total_time_seconds), 0) as total_time_seconds FROM guest_analytics g WHERE $whereClause";
+    $totalRes = $conn->query($totalSql);
+    $totalRow = $totalRes ? $totalRes->fetch_assoc() : null;
+    $totalGuests = (int)($totalRow['total_guests'] ?? 0);
+    $totalPlays = (int)($totalRow['total_plays'] ?? 0);
+    $totalTimeSeconds = (int)($totalRow['total_time_seconds'] ?? 0);
+
+    // 2. Device Type Breakdown (Mobile vs PC vs Tablet)
+    $devSql = "SELECT 
+        CASE 
+            WHEN g.device_type = '' OR g.device_type IS NULL THEN 'Unknown'
+            ELSE g.device_type 
+        END AS device_type,
+        COUNT(DISTINCT g.guest_id) AS guest_count,
+        COALESCE(SUM(g.total_plays), 0) AS total_plays,
+        COALESCE(SUM(g.total_time_seconds), 0) AS total_time_seconds
+    FROM guest_analytics g
+    WHERE $whereClause
+    GROUP BY device_type
+    ORDER BY guest_count DESC";
+    $devRes = $conn->query($devSql);
+    $devices = [];
+    $mobileCount = 0;
+    $pcCount = 0;
+    $tabletCount = 0;
+    if ($devRes) {
+        while ($r = $devRes->fetch_assoc()) {
+            $cnt = (int)$r['guest_count'];
+            $pct = $totalGuests > 0 ? round(($cnt / $totalGuests) * 100, 1) : 0;
+            $type = $r['device_type'];
+            if (strcasecmp($type, 'Mobile') === 0) $mobileCount += $cnt;
+            elseif (strcasecmp($type, 'PC') === 0) $pcCount += $cnt;
+            elseif (strcasecmp($type, 'Tablet') === 0) $tabletCount += $cnt;
+            $devices[] = [
+                'name' => $type,
+                'count' => $cnt,
+                'percentage' => $pct,
+                'plays' => (int)$r['total_plays'],
+                'time_seconds' => (int)$r['total_time_seconds']
+            ];
+        }
+    }
+
+    // 3. Operating Systems (OS) Breakdown
+    $osSql = "SELECT 
+        CASE 
+            WHEN g.os = '' OR g.os IS NULL THEN 'Unknown'
+            ELSE g.os 
+        END AS os_name,
+        COUNT(DISTINCT g.guest_id) AS guest_count,
+        COALESCE(SUM(g.total_plays), 0) AS total_plays
+    FROM guest_analytics g
+    WHERE $whereClause
+    GROUP BY os_name
+    ORDER BY guest_count DESC
+    LIMIT 20";
+    $osRes = $conn->query($osSql);
+    $osList = [];
+    if ($osRes) {
+        while ($r = $osRes->fetch_assoc()) {
+            $cnt = (int)$r['guest_count'];
+            $pct = $totalGuests > 0 ? round(($cnt / $totalGuests) * 100, 1) : 0;
+            $osList[] = [
+                'name' => $r['os_name'],
+                'count' => $cnt,
+                'percentage' => $pct,
+                'plays' => (int)$r['total_plays']
+            ];
+        }
+    }
+
+    // 4. Screen Resolutions Breakdown
+    $screenSql = "SELECT 
+        CASE 
+            WHEN g.screen_size = '' OR g.screen_size IS NULL THEN 'Unknown'
+            ELSE g.screen_size 
+        END AS screen_size,
+        COUNT(DISTINCT g.guest_id) AS guest_count,
+        COALESCE(SUM(g.total_plays), 0) AS total_plays
+    FROM guest_analytics g
+    WHERE $whereClause AND g.screen_size != '' AND g.screen_size != 'Unknown'
+    GROUP BY screen_size
+    ORDER BY guest_count DESC
+    LIMIT 35";
+    $screenRes = $conn->query($screenSql);
+    $screens = [];
+    if ($screenRes) {
+        while ($r = $screenRes->fetch_assoc()) {
+            $cnt = (int)$r['guest_count'];
+            $pct = $totalGuests > 0 ? round(($cnt / $totalGuests) * 100, 1) : 0;
+            $screens[] = [
+                'name' => $r['screen_size'],
+                'count' => $cnt,
+                'percentage' => $pct,
+                'plays' => (int)$r['total_plays']
+            ];
+        }
+    }
+
+    // 5. Browsers Breakdown
+    $browserSql = "SELECT 
+        CASE 
+            WHEN g.browser = '' OR g.browser IS NULL THEN 'Unknown'
+            ELSE g.browser 
+        END AS browser_name,
+        COUNT(DISTINCT g.guest_id) AS guest_count,
+        COALESCE(SUM(g.total_plays), 0) AS total_plays
+    FROM guest_analytics g
+    WHERE $whereClause
+    GROUP BY browser_name
+    ORDER BY guest_count DESC
+    LIMIT 20";
+    $browserRes = $conn->query($browserSql);
+    $browsers = [];
+    if ($browserRes) {
+        while ($r = $browserRes->fetch_assoc()) {
+            $cnt = (int)$r['guest_count'];
+            $pct = $totalGuests > 0 ? round(($cnt / $totalGuests) * 100, 1) : 0;
+            $browsers[] = [
+                'name' => $r['browser_name'],
+                'count' => $cnt,
+                'percentage' => $pct,
+                'plays' => (int)$r['total_plays']
+            ];
+        }
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'data' => [
+            'range' => $range,
+            'range_label' => $rangeLabel,
+            'summary' => [
+                'total_active_guests' => $totalGuests,
+                'total_plays' => $totalPlays,
+                'total_time_seconds' => $totalTimeSeconds,
+                'mobile_count' => $mobileCount,
+                'pc_count' => $pcCount,
+                'tablet_count' => $tabletCount,
+                'mobile_ratio' => $totalGuests > 0 ? round(($mobileCount / $totalGuests) * 100, 1) : 0,
+                'pc_ratio' => $totalGuests > 0 ? round(($pcCount / $totalGuests) * 100, 1) : 0,
+                'tablet_ratio' => $totalGuests > 0 ? round(($tabletCount / $totalGuests) * 100, 1) : 0
+            ],
+            'devices' => $devices,
+            'operating_systems' => $osList,
+            'screen_sizes' => $screens,
+            'browsers' => $browsers
+        ]
+    ]);
+    exit();
+}
+
 // ── IP Exclusion & Bot Filtering Management ─────────────────────────────────
 elseif ($action === 'getExcludedIps') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
