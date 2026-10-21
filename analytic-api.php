@@ -321,6 +321,39 @@ try {
     error_log("User activity schema migration failed: " . $e->getMessage());
 }
 
+// ── Jingle Analytics Schema Auto-Migration Guard ──
+try {
+    $jingle_schema_check = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'jingle_analytics_schema_v1' LIMIT 1");
+    if (!$jingle_schema_check || $jingle_schema_check->num_rows === 0) {
+        @$conn->query("CREATE TABLE IF NOT EXISTS daily_jingle_analytics (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            stat_date DATE NOT NULL,
+            total_plays INT DEFAULT 0,
+            total_completes INT DEFAULT 0,
+            total_skips INT DEFAULT 0,
+            UNIQUE KEY unique_daily_jingle (stat_date),
+            INDEX idx_jingle_date (stat_date)
+        )");
+        @$conn->query("CREATE TABLE IF NOT EXISTS jingle_events_log (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            event_type VARCHAR(20) NOT NULL,
+            guest_id VARCHAR(64) DEFAULT '',
+            is_guest TINYINT(1) DEFAULT 1,
+            device_type VARCHAR(50) DEFAULT '',
+            os VARCHAR(50) DEFAULT '',
+            browser VARCHAR(50) DEFAULT '',
+            upcoming_video_id VARCHAR(50) DEFAULT '',
+            upcoming_title VARCHAR(255) DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_jingle_created (created_at),
+            INDEX idx_jingle_event (event_type)
+        )");
+        @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('jingle_analytics_schema_v1', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
+    }
+} catch (Throwable $e) {
+    error_log("Jingle analytics schema migration failed: " . $e->getMessage());
+}
+
 function getClientIP() {
     $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'];
     foreach ($headers as $header) {
@@ -673,6 +706,42 @@ elseif ($action === 'recordTime') {
     echo json_encode(['status' => 'success']);
 }
 
+elseif ($action === 'recordJingleEvent') {
+    $event_type = $input['event_type'] ?? '';
+    if (!in_array($event_type, ['play', 'complete', 'skip'])) {
+        returnError("Valid event_type required ('play', 'complete', 'skip')");
+    }
+
+    $guest_id = $input['guest_id'] ?? '';
+    $is_guest = !empty($input['is_guest']) || empty($input['email']);
+    $device_type = $input['device_type'] ?? '';
+    $os = $input['os'] ?? '';
+    $browser = $input['browser'] ?? '';
+    $upcoming_video_id = $input['upcoming_video_id'] ?? '';
+    $upcoming_title = $input['upcoming_title'] ?? '';
+
+    // Update aggregate daily stats
+    if ($event_type === 'play') {
+        @$conn->query("INSERT INTO daily_jingle_analytics (stat_date, total_plays) VALUES (CURDATE(), 1) ON DUPLICATE KEY UPDATE total_plays = total_plays + 1");
+    } elseif ($event_type === 'complete') {
+        @$conn->query("INSERT INTO daily_jingle_analytics (stat_date, total_completes) VALUES (CURDATE(), 1) ON DUPLICATE KEY UPDATE total_completes = total_completes + 1");
+    } elseif ($event_type === 'skip') {
+        @$conn->query("INSERT INTO daily_jingle_analytics (stat_date, total_skips) VALUES (CURDATE(), 1) ON DUPLICATE KEY UPDATE total_skips = total_skips + 1");
+    }
+
+    // Insert into detailed log
+    $stmt = $conn->prepare("INSERT INTO jingle_events_log (event_type, guest_id, is_guest, device_type, os, browser, upcoming_video_id, upcoming_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    if ($stmt) {
+        $is_g_int = $is_guest ? 1 : 0;
+        $stmt->bind_param("ssisssss", $event_type, $guest_id, $is_g_int, $device_type, $os, $browser, $upcoming_video_id, $upcoming_title);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    echo json_encode(['status' => 'success']);
+    exit();
+}
+
 elseif ($action === 'getTop100Songs') {
     // Public endpoint for top 100 most played songs (used by discovery page)
     $res = $conn->query("SELECT video_id, title, thumbnail, play_count FROM song_analytics ORDER BY play_count DESC LIMIT 100");
@@ -895,6 +964,35 @@ elseif ($action === 'getAnalytics') {
         $og['city'] = $ipLocations[$ip]['city'] ?? '';
     }
     unset($og);
+
+    // Jingle Performance Summary
+    $jingle_summary = [
+        'total_plays' => 0,
+        'total_completes' => 0,
+        'total_skips' => 0,
+        'skip_rate' => 0,
+        'completion_rate' => 0
+    ];
+    $jingle_q = "SELECT SUM(total_plays) as plays, SUM(total_completes) as completes, SUM(total_skips) as skips FROM daily_jingle_analytics";
+    if ($filter === 'today') {
+        $jingle_q .= " WHERE stat_date = CURDATE()";
+    } elseif ($filter === 'yesterday') {
+        $jingle_q .= " WHERE stat_date = CURDATE() - INTERVAL 1 DAY";
+    } elseif ($filter === 'last_7_days') {
+        $jingle_q .= " WHERE stat_date >= CURDATE() - INTERVAL 7 DAY";
+    }
+    $j_res = $conn->query($jingle_q);
+    if ($j_res && $j_row = $j_res->fetch_assoc()) {
+        $p = (int)($j_row['plays'] ?? 0);
+        $c = (int)($j_row['completes'] ?? 0);
+        $s = (int)($j_row['skips'] ?? 0);
+        $jingle_summary['total_plays'] = $p;
+        $jingle_summary['total_completes'] = $c;
+        $jingle_summary['total_skips'] = $s;
+        $jingle_summary['skip_rate'] = $p > 0 ? round(($s / $p) * 100, 1) : 0;
+        $jingle_summary['completion_rate'] = $p > 0 ? round(($c / $p) * 100, 1) : 0;
+    }
+    $analytics['jingle_summary'] = $jingle_summary;
 
     echo json_encode(['status' => 'success', 'data' => $analytics]);
 }
