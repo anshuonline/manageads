@@ -233,51 +233,56 @@ function resolveIPsLocations(array $ips, $conn, $limit = 5) {
 }
 
 // ── Automatic 30-Day Data Retention Cleanup ────────────────────────────────
+function safeDeleteOldRows($conn, $table, $dateCondition) {
+    try {
+        $res = @$conn->query("DELETE FROM `$table` WHERE $dateCondition");
+        return ($res) ? (int)$conn->affected_rows : 0;
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
 function autoCleanupOldAnalytics($conn, $force = false) {
     if (!$force) {
         $today = date('Y-m-d');
-        $check = @$conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'last_analytics_cleanup' LIMIT 1");
-        if ($check && $row = $check->fetch_assoc()) {
-            if ($row['setting_value'] === $today) {
-                return false; // Already executed today
+        try {
+            $check = @$conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'last_analytics_cleanup' LIMIT 1");
+            if ($check && $row = $check->fetch_assoc()) {
+                if ($row['setting_value'] === $today) {
+                    return false; // Already executed today
+                }
             }
+            @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('last_analytics_cleanup', '$today') ON DUPLICATE KEY UPDATE setting_value = '$today'");
+        } catch (Throwable $e) {
+            // Non-blocking fallback
         }
-        @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('last_analytics_cleanup', '$today') ON DUPLICATE KEY UPDATE setting_value = '$today'");
     }
 
     $deleted = [];
 
     // 1. daily_analytics (Track plays/likes/shares - keep last 30 days)
-    @$conn->query("DELETE FROM daily_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
-    $deleted['daily_analytics'] = $conn->affected_rows;
+    $deleted['daily_analytics'] = safeDeleteOldRows($conn, 'daily_analytics', "stat_date < CURDATE() - INTERVAL 30 DAY");
 
     // 2. daily_guest_analytics (Guests daily play counts - keep last 30 days)
-    @$conn->query("DELETE FROM daily_guest_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
-    $deleted['daily_guest_analytics'] = $conn->affected_rows;
+    $deleted['daily_guest_analytics'] = safeDeleteOldRows($conn, 'daily_guest_analytics', "stat_date < CURDATE() - INTERVAL 30 DAY");
 
     // 3. guest_song_analytics (Guests songs list - inactive for > 30 days)
-    @$conn->query("DELETE FROM guest_song_analytics WHERE last_played < NOW() - INTERVAL 30 DAY");
-    $deleted['guest_song_analytics'] = $conn->affected_rows;
+    $deleted['guest_song_analytics'] = safeDeleteOldRows($conn, 'guest_song_analytics', "last_played < NOW() - INTERVAL 30 DAY");
 
     // 4. guest_analytics (Guest tracking logs inactive for > 30 days)
-    @$conn->query("DELETE FROM guest_analytics WHERE last_active < NOW() - INTERVAL 30 DAY");
-    $deleted['guest_analytics'] = $conn->affected_rows;
+    $deleted['guest_analytics'] = safeDeleteOldRows($conn, 'guest_analytics', "last_active < NOW() - INTERVAL 30 DAY");
 
     // 5. hourly_user_activity (Hourly curve aggregates older than 30 days)
-    @$conn->query("DELETE FROM hourly_user_activity WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
-    $deleted['hourly_user_activity'] = $conn->affected_rows;
+    $deleted['hourly_user_activity'] = safeDeleteOldRows($conn, 'hourly_user_activity', "stat_date < CURDATE() - INTERVAL 30 DAY");
 
     // 6. daily_search_analytics (Daily search statistics older than 30 days)
-    @$conn->query("DELETE FROM daily_search_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
-    $deleted['daily_search_analytics'] = $conn->affected_rows;
+    $deleted['daily_search_analytics'] = safeDeleteOldRows($conn, 'daily_search_analytics', "stat_date < CURDATE() - INTERVAL 30 DAY");
 
     // 7. search_analytics_log (Raw search queries older than 30 days)
-    @$conn->query("DELETE FROM search_analytics_log WHERE searched_at < NOW() - INTERVAL 30 DAY");
-    $deleted['search_analytics_log'] = $conn->affected_rows;
+    $deleted['search_analytics_log'] = safeDeleteOldRows($conn, 'search_analytics_log', "searched_at < NOW() - INTERVAL 30 DAY");
 
-    // 8. jingle_analytics (Jingle play/skip logs older than 30 days)
-    @$conn->query("DELETE FROM jingle_analytics WHERE created_at < NOW() - INTERVAL 30 DAY");
-    $deleted['jingle_analytics'] = $conn->affected_rows;
+    // 8. jingle_analytics (Jingle play/skip logs older than 30 days - if table exists)
+    $deleted['jingle_analytics'] = safeDeleteOldRows($conn, 'jingle_analytics', "created_at < NOW() - INTERVAL 30 DAY");
 
     return $deleted;
 }
@@ -1138,8 +1143,12 @@ elseif ($action === 'cleanupOldAnalytics' || $action === 'purgeOldData') {
 
     $optimized = false;
     if ($optimize) {
-        @$conn->query("OPTIMIZE TABLE daily_analytics, daily_guest_analytics, guest_song_analytics, guest_analytics, hourly_user_activity, daily_search_analytics, search_analytics_log, jingle_analytics");
-        $optimized = true;
+        try {
+            @$conn->query("OPTIMIZE TABLE daily_analytics, daily_guest_analytics, guest_song_analytics, guest_analytics, hourly_user_activity, daily_search_analytics, search_analytics_log");
+            $optimized = true;
+        } catch (Throwable $e) {
+            $optimized = false;
+        }
     }
 
     echo json_encode([
