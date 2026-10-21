@@ -138,18 +138,6 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
-// ── App Settings (sections, popups, header, etc.) ──────────────────────────
-// One-time table setup: only runs via ?setup=1
-if (isset($_GET['setup']) && $_GET['setup'] === '1') {
-    $conn->query("CREATE TABLE IF NOT EXISTS app_settings (
-        setting_key VARCHAR(100) PRIMARY KEY,
-        setting_value LONGTEXT
-    )");
-    echo json_encode(["status" => "success", "message" => "app_settings table created/verified."]);
-    $conn->close();
-    exit();
-}
-
 // ── Combined App Init (Performance: 4 queries in 1 request) ────────────────
 if ($action === 'app_init') {
     $result = [];
@@ -289,23 +277,6 @@ if ($action === 'submit_feedback' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $location = $conn->real_escape_string($location);
 
-    // Make sure table and column exist, but suppress exceptions if they already do (PHP 8.1+ throws fatal exceptions on SQL errors)
-    try {
-        $conn->query("CREATE TABLE IF NOT EXISTS user_feedback (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            rating INT DEFAULT 0,
-            suggestion TEXT,
-            user_name VARCHAR(255) DEFAULT 'Guest',
-            location VARCHAR(255) DEFAULT 'Unknown',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-        
-        $conn->query("ALTER TABLE user_feedback CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        $conn->query("ALTER TABLE user_feedback ADD COLUMN location VARCHAR(255) DEFAULT 'Unknown'");
-    } catch (Exception $e) {
-        // Ignore errors if table/column already exists
-    }
-
     $sql = "INSERT INTO user_feedback (rating, suggestion, user_name, location) VALUES ($rating, '$suggestion', '$user_name', '$location')";
     if ($conn->query($sql) === TRUE) {
         echo json_encode(["status" => "success", "message" => "Feedback saved successfully"]);
@@ -351,25 +322,6 @@ if ($action === 'submit_feature_request' && $_SERVER['REQUEST_METHOD'] === 'POST
     }
     
     $location = $conn->real_escape_string($location);
-
-    // Auto-create table if not exists
-    try {
-        $conn->query("CREATE TABLE IF NOT EXISTS feature_requests (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            title VARCHAR(255) NOT NULL,
-            description TEXT NOT NULL,
-            category VARCHAR(100) DEFAULT 'General',
-            user_name VARCHAR(255) DEFAULT 'Guest',
-            user_email VARCHAR(255) DEFAULT '',
-            status ENUM('pending', 'planned', 'in_progress', 'completed', 'declined') DEFAULT 'pending',
-            admin_notes TEXT,
-            ip_address VARCHAR(50) DEFAULT '',
-            location VARCHAR(255) DEFAULT 'Unknown',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    } catch (Exception $e) {
-        // Ignore table exists error
-    }
 
     $sql = "INSERT INTO feature_requests (title, description, category, user_name, user_email, ip_address, location) 
             VALUES ('$title', '$description', '$category', '$user_name', '$user_email', '$ip', '$location')";

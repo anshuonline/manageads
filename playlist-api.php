@@ -13,34 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 require_once 'config.php';
 
-// Auto-create table if it doesn't exist
-$createTableSql = "CREATE TABLE IF NOT EXISTS user_playlists (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    playlist_id VARCHAR(50) UNIQUE,
-    email VARCHAR(255),
-    playlist_name VARCHAR(255),
-    is_public TINYINT(1) DEFAULT 0,
-    songs JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-)";
-$conn->query($createTableSql);
-
-// Auto-add play_count column if missing
-$checkCol = $conn->query("SHOW COLUMNS FROM user_playlists LIKE 'play_count'");
-if ($checkCol && $checkCol->num_rows == 0) {
-    $conn->query("ALTER TABLE user_playlists ADD COLUMN play_count INT DEFAULT 0");
-}
-
-$createSavedSql = "CREATE TABLE IF NOT EXISTS saved_playlists (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255),
-    playlist_id VARCHAR(50),
-    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_save (email, playlist_id)
-)";
-$conn->query($createSavedSql);
-
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 // Function to generate a unique playlist ID
