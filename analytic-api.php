@@ -232,6 +232,63 @@ function resolveIPsLocations(array $ips, $conn, $limit = 5) {
     return $cached;
 }
 
+// ── Automatic 30-Day Data Retention Cleanup ────────────────────────────────
+function autoCleanupOldAnalytics($conn, $force = false) {
+    if (!$force) {
+        $today = date('Y-m-d');
+        $check = @$conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'last_analytics_cleanup' LIMIT 1");
+        if ($check && $row = $check->fetch_assoc()) {
+            if ($row['setting_value'] === $today) {
+                return false; // Already executed today
+            }
+        }
+        @$conn->query("INSERT INTO app_settings (setting_key, setting_value) VALUES ('last_analytics_cleanup', '$today') ON DUPLICATE KEY UPDATE setting_value = '$today'");
+    }
+
+    $deleted = [];
+
+    // 1. daily_analytics (Track plays/likes/shares - keep last 30 days)
+    @$conn->query("DELETE FROM daily_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
+    $deleted['daily_analytics'] = $conn->affected_rows;
+
+    // 2. daily_guest_analytics (Guests daily play counts - keep last 30 days)
+    @$conn->query("DELETE FROM daily_guest_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
+    $deleted['daily_guest_analytics'] = $conn->affected_rows;
+
+    // 3. guest_song_analytics (Guests songs list - inactive for > 30 days)
+    @$conn->query("DELETE FROM guest_song_analytics WHERE last_played < NOW() - INTERVAL 30 DAY");
+    $deleted['guest_song_analytics'] = $conn->affected_rows;
+
+    // 4. guest_analytics (Guest tracking logs inactive for > 30 days)
+    @$conn->query("DELETE FROM guest_analytics WHERE last_active < NOW() - INTERVAL 30 DAY");
+    $deleted['guest_analytics'] = $conn->affected_rows;
+
+    // 5. hourly_user_activity (Hourly curve aggregates older than 30 days)
+    @$conn->query("DELETE FROM hourly_user_activity WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
+    $deleted['hourly_user_activity'] = $conn->affected_rows;
+
+    // 6. daily_search_analytics (Daily search statistics older than 30 days)
+    @$conn->query("DELETE FROM daily_search_analytics WHERE stat_date < CURDATE() - INTERVAL 30 DAY");
+    $deleted['daily_search_analytics'] = $conn->affected_rows;
+
+    // 7. search_analytics_log (Raw search queries older than 30 days)
+    @$conn->query("DELETE FROM search_analytics_log WHERE searched_at < NOW() - INTERVAL 30 DAY");
+    $deleted['search_analytics_log'] = $conn->affected_rows;
+
+    // 8. jingle_analytics (Jingle play/skip logs older than 30 days)
+    @$conn->query("DELETE FROM jingle_analytics WHERE created_at < NOW() - INTERVAL 30 DAY");
+    $deleted['jingle_analytics'] = $conn->affected_rows;
+
+    return $deleted;
+}
+
+// Throttled daily auto-cleanup check on incoming write operations (~5% probability)
+if (in_array($action, ['recordPlay', 'recordGuestPing', 'recordLike', 'recordShare', 'recordTime', 'recordJingleEvent', 'recordSearch', 'recordSearchPlay'], true)) {
+    if (mt_rand(1, 20) === 1) {
+        autoCleanupOldAnalytics($conn, false);
+    }
+}
+
 if ($action === 'recordPlay') {
     $video_id = $input['video_id'] ?? null;
     $title = $input['title'] ?? '';
@@ -1070,6 +1127,28 @@ elseif ($action === 'purgeHostingerBots') {
         'status' => 'success',
         'message' => "Successfully purged $purged Hostinger bot records from guest analytics.",
         'purged_count' => $purged
+    ]);
+    exit();
+}
+
+// ── Manual / Cron 30-Day Retention Purge & Optimize ────────────────────────
+elseif ($action === 'cleanupOldAnalytics' || $action === 'purgeOldData') {
+    $optimize = !empty($_GET['optimize']) || !empty($input['optimize']);
+    $deleted = autoCleanupOldAnalytics($conn, true);
+
+    $optimized = false;
+    if ($optimize) {
+        @$conn->query("OPTIMIZE TABLE daily_analytics, daily_guest_analytics, guest_song_analytics, guest_analytics, hourly_user_activity, daily_search_analytics, search_analytics_log, jingle_analytics");
+        $optimized = true;
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => 'Analytics data older than 30 days purged successfully.',
+        'retention_days' => 30,
+        'deleted_records' => $deleted,
+        'tables_optimized' => $optimized,
+        'timestamp' => date('Y-m-d H:i:s')
     ]);
     exit();
 }
