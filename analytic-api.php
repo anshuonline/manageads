@@ -1151,11 +1151,33 @@ elseif ($action === 'cleanupOldAnalytics' || $action === 'purgeOldData') {
         }
     }
 
+    $stats = [];
+    try {
+        $r = $conn->query("SELECT COUNT(*) as total_rows, MIN(stat_date) as earliest_date, MAX(stat_date) as latest_date FROM daily_analytics");
+        if ($r && $row = $r->fetch_assoc()) $stats['daily_analytics'] = $row;
+    } catch (Throwable $e) {}
+
+    try {
+        $r = $conn->query("SELECT COUNT(*) as total_rows, MIN(stat_date) as earliest_date, MAX(stat_date) as latest_date FROM daily_guest_analytics");
+        if ($r && $row = $r->fetch_assoc()) $stats['daily_guest_analytics'] = $row;
+    } catch (Throwable $e) {}
+
+    try {
+        $r = $conn->query("SELECT COUNT(*) as total_rows, MIN(last_played) as earliest_played, MAX(last_played) as latest_played, SUM(CASE WHEN last_played IS NULL THEN 1 ELSE 0 END) as null_played FROM guest_song_analytics");
+        if ($r && $row = $r->fetch_assoc()) $stats['guest_song_analytics'] = $row;
+    } catch (Throwable $e) {}
+
+    try {
+        $r = $conn->query("SELECT COUNT(*) as total_rows, MIN(last_active) as earliest_active, MAX(last_active) as latest_active FROM guest_analytics");
+        if ($r && $row = $r->fetch_assoc()) $stats['guest_analytics'] = $row;
+    } catch (Throwable $e) {}
+
     echo json_encode([
         'status' => 'success',
         'message' => 'Analytics data older than 30 days purged successfully.',
         'retention_days' => 30,
         'deleted_records' => $deleted,
+        'current_table_stats' => $stats,
         'tables_optimized' => $optimized,
         'timestamp' => date('Y-m-d H:i:s')
     ]);
