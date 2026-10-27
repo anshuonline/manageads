@@ -103,13 +103,80 @@ function isTrackingBlocked($ip, $currentPage, $conn) {
     return false;
 }
 
+function ensureAccessKeysTable($conn) {
+    static $created = false;
+    if ($created) return;
+    $conn->query("CREATE TABLE IF NOT EXISTS gtanalytic_access_keys (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_label VARCHAR(100) NOT NULL DEFAULT 'User',
+        password_hash VARCHAR(255) NOT NULL,
+        plain_hint VARCHAR(255) DEFAULT '',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $created = true;
+}
+
 function verifyAdminAuth($conn, $pwd) {
-    if (!$pwd) return false;
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        return (md5($pwd) === $stored_hash || $pwd === $stored_hash);
+    if (!$pwd || !is_string($pwd)) return false;
+    $pwd = trim($pwd);
+    if ($pwd === '') return false;
+
+    $clean_pwd = $conn->real_escape_string($pwd);
+    $md5_pwd = md5($pwd);
+    $sha1_pwd = sha1($pwd);
+    $sha256_pwd = hash('sha256', $pwd);
+
+    // 1. Check in admin_settings table across ALL rows (matches plain text, MD5, SHA1, SHA256)
+    $res = $conn->query("SELECT id FROM admin_settings WHERE 
+        password_hash = '$md5_pwd' OR 
+        password_hash = '$clean_pwd' OR 
+        password_hash = '$sha1_pwd' OR 
+        password_hash = '$sha256_pwd' LIMIT 1");
+    if ($res && $res->num_rows > 0) {
+        return true;
     }
+
+    // 1b. Check if admin_settings has bcrypt/argon hash
+    $resBcrypt = $conn->query("SELECT password_hash FROM admin_settings WHERE password_hash LIKE '$2%' OR password_hash LIKE '$argon%'");
+    if ($resBcrypt) {
+        while ($row = $resBcrypt->fetch_assoc()) {
+            if (password_verify($pwd, $row['password_hash'])) {
+                return true;
+            }
+        }
+    }
+
+    // 2. Check in gtanalytic_access_keys table
+    ensureAccessKeysTable($conn);
+    $keyRes = $conn->query("SELECT id FROM gtanalytic_access_keys WHERE is_active = 1 AND (
+        password_hash = '$md5_pwd' OR 
+        password_hash = '$clean_pwd' OR 
+        password_hash = '$sha1_pwd' OR 
+        password_hash = '$sha256_pwd') LIMIT 1");
+    if ($keyRes && $keyRes->num_rows > 0) {
+        return true;
+    }
+
+    // 2b. Check bcrypt/argon in gtanalytic_access_keys
+    $keyResBcrypt = $conn->query("SELECT password_hash FROM gtanalytic_access_keys WHERE is_active = 1 AND (password_hash LIKE '$2%' OR password_hash LIKE '$argon%')");
+    if ($keyResBcrypt) {
+        while ($row = $keyResBcrypt->fetch_assoc()) {
+            if (password_verify($pwd, $row['password_hash'])) {
+                return true;
+            }
+        }
+    }
+
+    // 3. Fallback check in admins table (if exists)
+    $checkAdmins = $conn->query("SHOW TABLES LIKE 'admins'");
+    if ($checkAdmins && $checkAdmins->num_rows > 0) {
+        $q3 = $conn->query("SELECT id FROM admins WHERE password = '$md5_pwd' OR password = '$clean_pwd' LIMIT 1");
+        if ($q3 && $q3->num_rows > 0) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -490,34 +557,16 @@ elseif ($action === 'getTop100Songs') {
 
 elseif ($action === 'validatePwd') {
     // Lightweight admin password validation (shared with managegt / room analytics)
-    $pwd = $_GET['pwd'] ?? '';
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    $authorized = verifyAdminAuth($conn, $pwd);
     echo json_encode(['status' => $authorized ? 'success' : 'error']);
     exit();
 }
 
 elseif ($action === 'getAnalytics') {
-    $pwd = $_GET['pwd'] ?? '';
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
     
-    // Use same admin password from admin_settings table (shared with managegt)
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        // Check: md5(input) === stored_hash OR input === stored_hash (if user sends pre-hashed)
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    
-    if (!$authorized) {
+    if (!verifyAdminAuth($conn, $pwd)) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
     }
@@ -731,18 +780,8 @@ elseif ($action === 'getAnalytics') {
 }
 
 elseif ($action === 'getGuestGeography') {
-    $pwd = $_GET['pwd'] ?? '';
-    
-    // Auth check using admin_settings table (shared with managegt)
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    if (!$authorized) returnError("Unauthorized");
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
 
     $range = $_GET['range'] ?? 'dau'; // 'dau', 'wau', 'mau', 'yau', 'all'
     
@@ -1293,16 +1332,8 @@ elseif ($action === 'recordSearchPlay') {
 }
 
 elseif ($action === 'getSearchAnalytics') {
-    $pwd = $_GET['pwd'] ?? '';
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    if (!$authorized) returnError("Unauthorized");
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
 
     try {
         $period = $_GET['period'] ?? 'last_30_days';
@@ -2001,16 +2032,8 @@ elseif ($action === 'getSearchAnalytics') {
 }
 
 elseif ($action === 'getQueryDetails') {
-    $pwd = $_GET['pwd'] ?? '';
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    if (!$authorized) returnError("Unauthorized");
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
 
     try {
         $query = trim($_GET['query'] ?? '');
@@ -2092,18 +2115,8 @@ elseif ($action === 'getQueryDetails') {
 }
 
 elseif ($action === 'getDailySummary') {
-    $pwd = $_GET['pwd'] ?? '';
-    
-    // Auth check
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    if (!$authorized) {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
     }
@@ -2291,18 +2304,8 @@ elseif ($action === 'getDailySummary') {
 }
 
 elseif ($action === 'getUserActivity') {
-    $pwd = $_GET['pwd'] ?? '';
-    
-    // Auth check
-    $res = $conn->query("SELECT password_hash FROM admin_settings LIMIT 1");
-    $authorized = false;
-    if ($res && $row = $res->fetch_assoc()) {
-        $stored_hash = $row['password_hash'];
-        if (md5($pwd) === $stored_hash || $pwd === $stored_hash) {
-            $authorized = true;
-        }
-    }
-    if (!$authorized) {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
     }
@@ -2681,6 +2684,71 @@ elseif ($action === 'getUserActivity') {
     } catch (Throwable $e) {
         returnError("User activity analytics error: " . $e->getMessage());
     }
+}
+
+elseif ($action === 'getAccessKeys') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    ensureAccessKeysTable($conn);
+    $res = $conn->query("SELECT id, user_label, plain_hint, is_active, created_at FROM gtanalytic_access_keys ORDER BY id DESC");
+    $keys = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $keys[] = $row;
+        }
+    }
+    echo json_encode(['status' => 'success', 'data' => $keys]);
+    exit();
+}
+
+elseif ($action === 'createAccessKey') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $label = trim($input['label'] ?? ($_GET['label'] ?? ''));
+    $newPwd = trim($input['new_pwd'] ?? ($_GET['new_pwd'] ?? ''));
+
+    if (empty($label)) returnError("User label is required");
+    if (empty($newPwd)) returnError("Password is required");
+
+    ensureAccessKeysTable($conn);
+    $clean_label = $conn->real_escape_string($label);
+    $clean_pwd = $conn->real_escape_string($newPwd);
+    $md5_hash = md5($newPwd);
+
+    $sql = "INSERT INTO gtanalytic_access_keys (user_label, password_hash, plain_hint, is_active) 
+            VALUES ('$clean_label', '$md5_hash', '$clean_pwd', 1)";
+    if ($conn->query($sql)) {
+        $insertId = $conn->insert_id;
+        echo json_encode([
+            'status' => 'success', 
+            'message' => 'Access key created successfully',
+            'data' => [
+                'id' => $insertId,
+                'user_label' => $label,
+                'plain_hint' => $newPwd,
+                'is_active' => 1,
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+    } else {
+        returnError("Failed to create access key: " . $conn->error);
+    }
+    exit();
+}
+
+elseif ($action === 'deleteAccessKey') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    $id = intval($input['id'] ?? ($_GET['id'] ?? 0));
+    if ($id <= 0) returnError("Valid Key ID is required");
+
+    ensureAccessKeysTable($conn);
+    $conn->query("DELETE FROM gtanalytic_access_keys WHERE id = $id");
+    echo json_encode(['status' => 'success', 'message' => 'Access key deleted successfully']);
+    exit();
 }
 
 else {
