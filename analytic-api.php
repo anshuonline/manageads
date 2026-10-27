@@ -233,6 +233,11 @@ function verifyAdminAuth($conn, $pwd) {
     return $info['authorized'];
 }
 
+function verifyPrimaryAdminAuth($conn, $pwd) {
+    $info = verifyAdminAuthWithDetails($conn, $pwd);
+    return ($info['authorized'] && ($info['user_label'] === 'Primary Admin' || empty($info['key_id'])));
+}
+
 function buildGuestFilterSql($conn, $tableAlias = '') {
     $prefix = $tableAlias ? ($tableAlias . '.') : '';
     $clause = "({$prefix}ip_address NOT LIKE '2a02:4780:%' AND {$prefix}ip_address NOT LIKE '2a02:4787:%' AND {$prefix}current_page NOT LIKE '%LSCWP_CTRL%' AND {$prefix}current_page NOT LIKE '%before_optm%')";
@@ -617,7 +622,8 @@ elseif ($action === 'validatePwd') {
     }
     echo json_encode([
         'status' => $authInfo['authorized'] ? 'success' : 'error',
-        'user_label' => $authInfo['user_label']
+        'user_label' => $authInfo['user_label'],
+        'is_primary_admin' => ($authInfo['user_label'] === 'Primary Admin' || empty($authInfo['key_id']))
     ]);
     exit();
 }
@@ -841,7 +847,12 @@ elseif ($action === 'getAnalytics') {
     }
     $analytics['jingle_summary'] = $jingle_summary;
 
-    echo json_encode(['status' => 'success', 'data' => $analytics]);
+    echo json_encode([
+        'status' => 'success', 
+        'data' => $analytics,
+        'user_label' => $authInfo['user_label'],
+        'is_primary_admin' => ($authInfo['user_label'] === 'Primary Admin' || empty($authInfo['key_id']))
+    ]);
 }
 
 elseif ($action === 'getGuestGeography') {
@@ -2753,7 +2764,7 @@ elseif ($action === 'getUserActivity') {
 
 elseif ($action === 'getAccessKeys') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
-    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+    if (!verifyPrimaryAdminAuth($conn, $pwd)) returnError("Unauthorized: Only Primary Admin can view access keys");
 
     ensureAccessKeysTable($conn);
     $res = $conn->query("SELECT id, user_label, plain_hint, is_active, created_at FROM gtanalytic_access_keys ORDER BY id DESC");
@@ -2769,7 +2780,7 @@ elseif ($action === 'getAccessKeys') {
 
 elseif ($action === 'createAccessKey') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
-    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+    if (!verifyPrimaryAdminAuth($conn, $pwd)) returnError("Unauthorized: Only Primary Admin can create access keys");
 
     $label = trim($input['label'] ?? ($_GET['label'] ?? ''));
     $newPwd = trim($input['new_pwd'] ?? ($_GET['new_pwd'] ?? ''));
@@ -2805,7 +2816,7 @@ elseif ($action === 'createAccessKey') {
 
 elseif ($action === 'deleteAccessKey') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
-    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+    if (!verifyPrimaryAdminAuth($conn, $pwd)) returnError("Unauthorized: Only Primary Admin can delete access keys");
 
     $id = intval($input['id'] ?? ($_GET['id'] ?? 0));
     if ($id <= 0) returnError("Valid Key ID is required");
@@ -2818,7 +2829,7 @@ elseif ($action === 'deleteAccessKey') {
 
 elseif ($action === 'getLoginLogs') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
-    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+    if (!verifyPrimaryAdminAuth($conn, $pwd)) returnError("Unauthorized: Only Primary Admin can view login logs");
 
     ensureLoginLogsTable($conn);
     // Purge records older than 7 days
