@@ -4,9 +4,11 @@ date_default_timezone_set('Asia/Kolkata');
 @$conn->query("SET time_zone = '+05:30'");
 @$conn->query("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
 
+@ini_set('display_errors', '0');
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Content-Type: application/json; charset=UTF-8");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -138,7 +140,7 @@ function verifyAdminAuth($conn, $pwd) {
     }
 
     // 1b. Check if admin_settings has bcrypt/argon hash
-    $resBcrypt = $conn->query("SELECT password_hash FROM admin_settings WHERE password_hash LIKE '$2%' OR password_hash LIKE '$argon%'");
+    $resBcrypt = $conn->query("SELECT password_hash FROM admin_settings WHERE password_hash LIKE '\$2%' OR password_hash LIKE '\$argon%'");
     if ($resBcrypt) {
         while ($row = $resBcrypt->fetch_assoc()) {
             if (password_verify($pwd, $row['password_hash'])) {
@@ -159,7 +161,7 @@ function verifyAdminAuth($conn, $pwd) {
     }
 
     // 2b. Check bcrypt/argon in gtanalytic_access_keys
-    $keyResBcrypt = $conn->query("SELECT password_hash FROM gtanalytic_access_keys WHERE is_active = 1 AND (password_hash LIKE '$2%' OR password_hash LIKE '$argon%')");
+    $keyResBcrypt = $conn->query("SELECT password_hash FROM gtanalytic_access_keys WHERE is_active = 1 AND (password_hash LIKE '\$2%' OR password_hash LIKE '\$argon%')");
     if ($keyResBcrypt) {
         while ($row = $keyResBcrypt->fetch_assoc()) {
             if (password_verify($pwd, $row['password_hash'])) {
