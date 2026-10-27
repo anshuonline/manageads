@@ -28,13 +28,18 @@ $inputJSON = file_get_contents('php://input');
 $input = json_decode($inputJSON, TRUE);
 
 function getClientIP() {
-    $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'];
+    $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP', 'REMOTE_ADDR'];
     foreach ($headers as $header) {
         if (!empty($_SERVER[$header])) {
             $ipList = explode(',', $_SERVER[$header]);
-            $ip = trim($ipList[0]);
-            if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                return $ip;
+            foreach ($ipList as $rawIp) {
+                $ip = trim($rawIp);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    // Check if it's not a private range, loopback, or Hostinger server subnet
+                    if (strpos($ip, '2a02:4780:') !== 0 && strpos($ip, '2a02:4787:') !== 0 && strpos($ip, '127.') !== 0 && $ip !== '::1') {
+                        return $ip;
+                    }
+                }
             }
         }
     }
@@ -139,19 +144,34 @@ function ensureLoginLogsTable($conn) {
     )");
     // Auto-purge login logs older than 7 days
     @$conn->query("DELETE FROM gtanalytic_login_logs WHERE created_at < NOW() - INTERVAL 7 DAY");
+    // Clean up any stray Hostinger server internal IPs or headless server pings
+    @$conn->query("DELETE FROM gtanalytic_login_logs WHERE ip_address LIKE '2a02:4780:%' OR ip_address LIKE '2a02:4787:%' OR (os = 'Unknown' AND browser = 'Unknown')");
     $created = true;
 }
 
 function recordLoginAuditLog($conn, $authInfo, $input = []) {
     ensureLoginLogsTable($conn);
     $ip = getClientIP();
-    $deviceType = $conn->real_escape_string($input['device_type'] ?? ($_GET['device_type'] ?? 'PC'));
-    $os = $conn->real_escape_string($input['os'] ?? ($_GET['os'] ?? 'Unknown'));
-    $browser = $conn->real_escape_string($input['browser'] ?? ($_GET['browser'] ?? 'Unknown'));
-    $screen = $conn->real_escape_string($input['screen_size'] ?? ($_GET['screen_size'] ?? ''));
-    $city = $conn->real_escape_string($_SERVER['HTTP_CF_IPCITY'] ?? ($input['city'] ?? ''));
-    $country = $conn->real_escape_string($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ($input['country'] ?? ''));
-    $ua = $conn->real_escape_string($_SERVER['HTTP_USER_AGENT'] ?? '');
+
+    // Never log Hostinger's internal server/bot IPv6 or loopback
+    if (strpos($ip, '2a02:4780:') === 0 || strpos($ip, '2a02:4787:') === 0 || $ip === '127.0.0.1' || $ip === '::1') {
+        return;
+    }
+
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    // Never log headless server-side calls (e.g. node, curl, undici, python)
+    if (empty($ua) || stripos($ua, 'node') !== false || stripos($ua, 'curl') !== false || stripos($ua, 'undici') !== false || stripos($ua, 'python') !== false) {
+        return;
+    }
+
+    $params = !empty($input) ? $input : $_GET;
+    $deviceType = $conn->real_escape_string($params['device_type'] ?? 'PC');
+    $os = $conn->real_escape_string($params['os'] ?? 'Unknown');
+    $browser = $conn->real_escape_string($params['browser'] ?? 'Unknown');
+    $screen = $conn->real_escape_string($params['screen_size'] ?? '');
+    $city = $conn->real_escape_string($_SERVER['HTTP_CF_IPCITY'] ?? ($params['city'] ?? ''));
+    $country = $conn->real_escape_string($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ($params['country'] ?? ''));
+    $escUa = $conn->real_escape_string($ua);
     $status = (!empty($authInfo['authorized'])) ? 'success' : 'failed';
     $userLabel = $conn->real_escape_string($authInfo['user_label'] ?: 'Unknown User');
     $userIdent = $conn->real_escape_string(!empty($authInfo['key_id']) ? ('Key #' . $authInfo['key_id']) : 'master_admin');
@@ -159,7 +179,7 @@ function recordLoginAuditLog($conn, $authInfo, $input = []) {
     $sql = "INSERT INTO gtanalytic_login_logs 
         (user_label, user_identifier, ip_address, device_type, os, browser, screen_size, city, country, status, user_agent)
         VALUES 
-        ('$userLabel', '$userIdent', '$ip', '$deviceType', '$os', '$browser', '$screen', '$city', '$country', '$status', '$ua')";
+        ('$userLabel', '$userIdent', '$ip', '$deviceType', '$os', '$browser', '$screen', '$city', '$country', '$status', '$escUa')";
     @$conn->query($sql);
 }
 
@@ -614,12 +634,9 @@ elseif ($action === 'getTop100Songs') {
 }
 
 elseif ($action === 'validatePwd') {
-    // Lightweight admin password validation with login audit log
+    // Lightweight admin password validation for server.js room analytics
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
     $authInfo = verifyAdminAuthWithDetails($conn, $pwd);
-    if (!empty($pwd)) {
-        recordLoginAuditLog($conn, $authInfo, $input ?? []);
-    }
     echo json_encode([
         'status' => $authInfo['authorized'] ? 'success' : 'error',
         'user_label' => $authInfo['user_label'],
@@ -639,7 +656,7 @@ elseif ($action === 'getAnalytics') {
 
     // If requested, record login audit log
     if (!empty($_GET['record_login']) || !empty($input['record_login'])) {
-        recordLoginAuditLog($conn, $authInfo, $input ?? []);
+        recordLoginAuditLog($conn, $authInfo, !empty($input) ? $input : $_GET);
     }
     
     $analytics = [
@@ -2832,8 +2849,9 @@ elseif ($action === 'getLoginLogs') {
     if (!verifyPrimaryAdminAuth($conn, $pwd)) returnError("Unauthorized: Only Primary Admin can view login logs");
 
     ensureLoginLogsTable($conn);
-    // Purge records older than 7 days
+    // Purge records older than 7 days and clean up any stray Hostinger IPv6 or headless pings
     @$conn->query("DELETE FROM gtanalytic_login_logs WHERE created_at < NOW() - INTERVAL 7 DAY");
+    @$conn->query("DELETE FROM gtanalytic_login_logs WHERE ip_address LIKE '2a02:4780:%' OR ip_address LIKE '2a02:4787:%' OR (os = 'Unknown' AND browser = 'Unknown')");
 
     $res = $conn->query("SELECT id, user_label, user_identifier, ip_address, device_type, os, browser, screen_size, city, country, status, created_at FROM gtanalytic_login_logs ORDER BY id DESC LIMIT 150");
     $logs = [];
