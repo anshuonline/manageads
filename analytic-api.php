@@ -119,10 +119,54 @@ function ensureAccessKeysTable($conn) {
     $created = true;
 }
 
-function verifyAdminAuth($conn, $pwd) {
-    if (!$pwd || !is_string($pwd)) return false;
+function ensureLoginLogsTable($conn) {
+    static $created = false;
+    if ($created) return;
+    $conn->query("CREATE TABLE IF NOT EXISTS gtanalytic_login_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_label VARCHAR(100) NOT NULL DEFAULT 'User',
+        user_identifier VARCHAR(100) NOT NULL DEFAULT '',
+        ip_address VARCHAR(45) NOT NULL DEFAULT '',
+        device_type VARCHAR(50) DEFAULT 'PC',
+        os VARCHAR(50) DEFAULT 'Unknown',
+        browser VARCHAR(50) DEFAULT 'Unknown',
+        screen_size VARCHAR(50) DEFAULT '',
+        city VARCHAR(100) DEFAULT '',
+        country VARCHAR(100) DEFAULT '',
+        status VARCHAR(20) DEFAULT 'success',
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    // Auto-purge login logs older than 7 days
+    @$conn->query("DELETE FROM gtanalytic_login_logs WHERE created_at < NOW() - INTERVAL 7 DAY");
+    $created = true;
+}
+
+function recordLoginAuditLog($conn, $authInfo, $input = []) {
+    ensureLoginLogsTable($conn);
+    $ip = getClientIP();
+    $deviceType = $conn->real_escape_string($input['device_type'] ?? ($_GET['device_type'] ?? 'PC'));
+    $os = $conn->real_escape_string($input['os'] ?? ($_GET['os'] ?? 'Unknown'));
+    $browser = $conn->real_escape_string($input['browser'] ?? ($_GET['browser'] ?? 'Unknown'));
+    $screen = $conn->real_escape_string($input['screen_size'] ?? ($_GET['screen_size'] ?? ''));
+    $city = $conn->real_escape_string($_SERVER['HTTP_CF_IPCITY'] ?? ($input['city'] ?? ''));
+    $country = $conn->real_escape_string($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ($input['country'] ?? ''));
+    $ua = $conn->real_escape_string($_SERVER['HTTP_USER_AGENT'] ?? '');
+    $status = (!empty($authInfo['authorized'])) ? 'success' : 'failed';
+    $userLabel = $conn->real_escape_string($authInfo['user_label'] ?: 'Unknown User');
+    $userIdent = $conn->real_escape_string(!empty($authInfo['key_id']) ? ('Key #' . $authInfo['key_id']) : 'master_admin');
+
+    $sql = "INSERT INTO gtanalytic_login_logs 
+        (user_label, user_identifier, ip_address, device_type, os, browser, screen_size, city, country, status, user_agent)
+        VALUES 
+        ('$userLabel', '$userIdent', '$ip', '$deviceType', '$os', '$browser', '$screen', '$city', '$country', '$status', '$ua')";
+    @$conn->query($sql);
+}
+
+function verifyAdminAuthWithDetails($conn, $pwd) {
+    if (!$pwd || !is_string($pwd)) return ['authorized' => false, 'user_label' => '', 'key_id' => null];
     $pwd = trim($pwd);
-    if ($pwd === '') return false;
+    if ($pwd === '') return ['authorized' => false, 'user_label' => '', 'key_id' => null];
 
     $clean_pwd = $conn->real_escape_string($pwd);
     $md5_pwd = md5($pwd);
@@ -136,7 +180,7 @@ function verifyAdminAuth($conn, $pwd) {
         password_hash = '$sha1_pwd' OR 
         password_hash = '$sha256_pwd' LIMIT 1");
     if ($res && $res->num_rows > 0) {
-        return true;
+        return ['authorized' => true, 'user_label' => 'Primary Admin', 'key_id' => null];
     }
 
     // 1b. Check if admin_settings has bcrypt/argon hash
@@ -144,28 +188,29 @@ function verifyAdminAuth($conn, $pwd) {
     if ($resBcrypt) {
         while ($row = $resBcrypt->fetch_assoc()) {
             if (password_verify($pwd, $row['password_hash'])) {
-                return true;
+                return ['authorized' => true, 'user_label' => 'Primary Admin', 'key_id' => null];
             }
         }
     }
 
     // 2. Check in gtanalytic_access_keys table
     ensureAccessKeysTable($conn);
-    $keyRes = $conn->query("SELECT id FROM gtanalytic_access_keys WHERE is_active = 1 AND (
+    $keyRes = $conn->query("SELECT id, user_label FROM gtanalytic_access_keys WHERE is_active = 1 AND (
         password_hash = '$md5_pwd' OR 
         password_hash = '$clean_pwd' OR 
         password_hash = '$sha1_pwd' OR 
         password_hash = '$sha256_pwd') LIMIT 1");
     if ($keyRes && $keyRes->num_rows > 0) {
-        return true;
+        $keyRow = $keyRes->fetch_assoc();
+        return ['authorized' => true, 'user_label' => $keyRow['user_label'], 'key_id' => intval($keyRow['id'])];
     }
 
     // 2b. Check bcrypt/argon in gtanalytic_access_keys
-    $keyResBcrypt = $conn->query("SELECT password_hash FROM gtanalytic_access_keys WHERE is_active = 1 AND (password_hash LIKE '\$2%' OR password_hash LIKE '\$argon%')");
+    $keyResBcrypt = $conn->query("SELECT id, user_label, password_hash FROM gtanalytic_access_keys WHERE is_active = 1 AND (password_hash LIKE '\$2%' OR password_hash LIKE '\$argon%')");
     if ($keyResBcrypt) {
         while ($row = $keyResBcrypt->fetch_assoc()) {
             if (password_verify($pwd, $row['password_hash'])) {
-                return true;
+                return ['authorized' => true, 'user_label' => $row['user_label'], 'key_id' => intval($row['id'])];
             }
         }
     }
@@ -173,13 +218,19 @@ function verifyAdminAuth($conn, $pwd) {
     // 3. Fallback check in admins table (if exists)
     $checkAdmins = $conn->query("SHOW TABLES LIKE 'admins'");
     if ($checkAdmins && $checkAdmins->num_rows > 0) {
-        $q3 = $conn->query("SELECT id FROM admins WHERE password = '$md5_pwd' OR password = '$clean_pwd' LIMIT 1");
+        $q3 = $conn->query("SELECT id, username FROM admins WHERE password = '$md5_pwd' OR password = '$clean_pwd' LIMIT 1");
         if ($q3 && $q3->num_rows > 0) {
-            return true;
+            $row3 = $q3->fetch_assoc();
+            return ['authorized' => true, 'user_label' => $row3['username'] ?? 'Admin', 'key_id' => null];
         }
     }
 
-    return false;
+    return ['authorized' => false, 'user_label' => '', 'key_id' => null];
+}
+
+function verifyAdminAuth($conn, $pwd) {
+    $info = verifyAdminAuthWithDetails($conn, $pwd);
+    return $info['authorized'];
 }
 
 function buildGuestFilterSql($conn, $tableAlias = '') {
@@ -558,19 +609,31 @@ elseif ($action === 'getTop100Songs') {
 }
 
 elseif ($action === 'validatePwd') {
-    // Lightweight admin password validation (shared with managegt / room analytics)
+    // Lightweight admin password validation with login audit log
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
-    $authorized = verifyAdminAuth($conn, $pwd);
-    echo json_encode(['status' => $authorized ? 'success' : 'error']);
+    $authInfo = verifyAdminAuthWithDetails($conn, $pwd);
+    if (!empty($pwd)) {
+        recordLoginAuditLog($conn, $authInfo, $input ?? []);
+    }
+    echo json_encode([
+        'status' => $authInfo['authorized'] ? 'success' : 'error',
+        'user_label' => $authInfo['user_label']
+    ]);
     exit();
 }
 
 elseif ($action === 'getAnalytics') {
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    $authInfo = verifyAdminAuthWithDetails($conn, $pwd);
     
-    if (!verifyAdminAuth($conn, $pwd)) {
+    if (!$authInfo['authorized']) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit();
+    }
+
+    // If requested, record login audit log
+    if (!empty($_GET['record_login']) || !empty($input['record_login'])) {
+        recordLoginAuditLog($conn, $authInfo, $input ?? []);
     }
     
     $analytics = [
@@ -2750,6 +2813,25 @@ elseif ($action === 'deleteAccessKey') {
     ensureAccessKeysTable($conn);
     $conn->query("DELETE FROM gtanalytic_access_keys WHERE id = $id");
     echo json_encode(['status' => 'success', 'message' => 'Access key deleted successfully']);
+    exit();
+}
+
+elseif ($action === 'getLoginLogs') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    if (!verifyAdminAuth($conn, $pwd)) returnError("Unauthorized");
+
+    ensureLoginLogsTable($conn);
+    // Purge records older than 7 days
+    @$conn->query("DELETE FROM gtanalytic_login_logs WHERE created_at < NOW() - INTERVAL 7 DAY");
+
+    $res = $conn->query("SELECT id, user_label, user_identifier, ip_address, device_type, os, browser, screen_size, city, country, status, created_at FROM gtanalytic_login_logs ORDER BY id DESC LIMIT 150");
+    $logs = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $logs[] = $row;
+        }
+    }
+    echo json_encode(['status' => 'success', 'data' => $logs]);
     exit();
 }
 
