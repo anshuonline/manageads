@@ -56,10 +56,18 @@ if ($action === 'getProfile') {
             $row['photo_url'] = $photo;
         }
 
+        // Update display_name if DB currently has empty name and a fresh name is provided
+        if (!empty($name) && empty($row['display_name'])) {
+            $conn->query("UPDATE user_profiles SET display_name = '$name' WHERE email = '$email'");
+            $row['display_name'] = $name;
+        }
+
         // If user never received the welcome email (e.g. first-time login), send it!
         if (empty($row['welcome_email_sent']) || (int)$row['welcome_email_sent'] === 0) {
             $displayName = !empty($name) ? $name : (!empty($row['display_name']) ? $row['display_name'] : '');
-            GanaTubeMailer::sendWelcomeEmail($email, $displayName);
+            try {
+                GanaTubeMailer::sendWelcomeEmail($email, $displayName);
+            } catch (Throwable $e) {}
             $conn->query("UPDATE user_profiles SET welcome_email_sent = 1 WHERE email = '$email'");
         }
 
@@ -93,7 +101,9 @@ if ($action === 'getProfile') {
         $conn->query($insert_sql);
         
         // Dispatch beautiful Hostinger SMTP welcome email
-        GanaTubeMailer::sendWelcomeEmail($email, $name);
+        try {
+            GanaTubeMailer::sendWelcomeEmail($email, $name);
+        } catch (Throwable $e) {}
         
         echo json_encode([
             "status" => "success",
