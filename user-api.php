@@ -249,10 +249,11 @@ elseif ($action === 'sendWelcomeEmail') {
         exit;
     }
 
+    $force = !empty($data['force']);
     $chk = $conn->query("SELECT welcome_email_sent, display_name FROM user_profiles WHERE email = '$email'");
     if ($chk && $chk->num_rows > 0) {
         $row = $chk->fetch_assoc();
-        if ((int)$row['welcome_email_sent'] === 1) {
+        if (!$force && (int)$row['welcome_email_sent'] === 1) {
             echo json_encode(["status" => "success", "message" => "Welcome email already sent previously"]);
             exit;
         }
