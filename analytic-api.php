@@ -634,7 +634,7 @@ elseif ($action === 'getTop100Songs') {
 }
 
 elseif ($action === 'validatePwd') {
-    // Lightweight admin password validation for server.js room analytics
+    // Lightweight admin password validation
     $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
     $authInfo = verifyAdminAuthWithDetails($conn, $pwd);
     echo json_encode([
