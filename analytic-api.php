@@ -8,9 +8,11 @@ date_default_timezone_set('Asia/Kolkata');
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Max-Age: 86400");
 header("Content-Type: application/json; charset=UTF-8");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header("Access-Control-Max-Age: 86400");
     http_response_code(200);
     exit();
 }
@@ -21,6 +23,46 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 function returnError($message, $error = null) {
     echo json_encode(['status' => 'error', 'message' => $message, 'error' => $error]);
     exit();
+}
+
+// ── 2-Hour Snapshot Cache Helpers ──────────────────────────────────────────
+function getAnalyticsSnapshotCache($cacheKey, $ttlSeconds = 7200) {
+    $cacheDir = __DIR__ . '/cache';
+    $cacheFile = $cacheDir . '/' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $cacheKey) . '.json';
+    if (!file_exists($cacheFile)) {
+        return null;
+    }
+    $mtime = @filemtime($cacheFile);
+    if (!$mtime) return null;
+    $age = time() - $mtime;
+    if ($age > $ttlSeconds) {
+        return null;
+    }
+    $raw = @file_get_contents($cacheFile);
+    if (!$raw) return null;
+    $data = json_decode($raw, true);
+    if (!is_array($data)) return null;
+
+    $cachedAtTime = $mtime;
+    $nextUpdateTime = $mtime + $ttlSeconds;
+    $data['_cache_meta'] = [
+        'is_cached' => true,
+        'cached_at' => date('Y-m-d H:i:s', $cachedAtTime),
+        'cached_at_formatted' => date('h:i A', $cachedAtTime),
+        'next_update_formatted' => date('h:i A', $nextUpdateTime),
+        'ttl_seconds' => $ttlSeconds,
+        'age_seconds' => $age
+    ];
+    return $data;
+}
+
+function setAnalyticsSnapshotCache($cacheKey, $data, $ttlSeconds = 7200) {
+    $cacheDir = __DIR__ . '/cache';
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+    $cacheFile = $cacheDir . '/' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $cacheKey) . '.json';
+    @file_put_contents($cacheFile, json_encode($data));
 }
 
 // Ensure payload exists
@@ -622,6 +664,13 @@ elseif ($action === 'recordJingleEvent') {
 
 elseif ($action === 'getTop100Songs') {
     // Public endpoint for top 100 most played songs (used by discovery page)
+    $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']);
+    $cached = getAnalyticsSnapshotCache('gtanalytic_top_100_songs', 7200);
+    if ($cached !== null && !$forceRefresh) {
+        echo json_encode(['status' => 'success', 'data' => $cached['songs'] ?? $cached]);
+        exit();
+    }
+
     $res = $conn->query("SELECT video_id, title, thumbnail, play_count FROM song_analytics ORDER BY play_count DESC LIMIT 100");
     $top_songs = [];
     if ($res) {
@@ -629,6 +678,7 @@ elseif ($action === 'getTop100Songs') {
             $top_songs[] = $row;
         }
     }
+    setAnalyticsSnapshotCache('gtanalytic_top_100_songs', ['songs' => $top_songs], 7200);
     echo json_encode(['status' => 'success', 'data' => $top_songs]);
     exit();
 }
@@ -658,6 +708,27 @@ elseif ($action === 'getAnalytics') {
     if (!empty($_GET['record_login']) || !empty($input['record_login'])) {
         recordLoginAuditLog($conn, $authInfo, !empty($input) ? $input : $_GET);
     }
+
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all_time';
+    $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']) || !empty($input['force_refresh']) || !empty($input['refresh']);
+    $cacheKey = 'gtanalytic_overview_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $filter);
+
+    if (!$forceRefresh) {
+        $cached = getAnalyticsSnapshotCache($cacheKey, 7200);
+        if ($cached !== null) {
+            $meta = $cached['_cache_meta'] ?? [];
+            unset($cached['_cache_meta']);
+            $cached['snapshot_meta'] = $meta;
+            echo json_encode([
+                'status' => 'success',
+                'data' => $cached,
+                'user_label' => $authInfo['user_label'],
+                'is_primary_admin' => ($authInfo['user_label'] === 'Primary Admin' || empty($authInfo['key_id'])),
+                'snapshot_meta' => $meta
+            ]);
+            exit();
+        }
+    }
     
     $analytics = [
         'most_played' => [],
@@ -674,8 +745,6 @@ elseif ($action === 'getAnalytics') {
             'daily_active_users' => 0
         ]
     ];
-    
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all_time';
     
     // Build the query based on filter
     $most_played_q = "SELECT s.*, COALESCE(g.play_count, 0) as guest_play_count, GREATEST(0, s.play_count - COALESCE(g.play_count, 0)) as user_play_count FROM song_analytics s LEFT JOIN guest_song_analytics g ON s.video_id = g.video_id ORDER BY s.play_count DESC LIMIT 50";
@@ -864,11 +933,24 @@ elseif ($action === 'getAnalytics') {
     }
     $analytics['jingle_summary'] = $jingle_summary;
 
+    $now = time();
+    $snapshotMeta = [
+        'is_cached' => false,
+        'cached_at' => date('Y-m-d H:i:s', $now),
+        'cached_at_formatted' => date('h:i A', $now),
+        'next_update_formatted' => date('h:i A', $now + 7200),
+        'ttl_seconds' => 7200,
+        'age_seconds' => 0
+    ];
+    setAnalyticsSnapshotCache($cacheKey, $analytics, 7200);
+    $analytics['snapshot_meta'] = $snapshotMeta;
+
     echo json_encode([
         'status' => 'success', 
         'data' => $analytics,
         'user_label' => $authInfo['user_label'],
-        'is_primary_admin' => ($authInfo['user_label'] === 'Primary Admin' || empty($authInfo['key_id']))
+        'is_primary_admin' => ($authInfo['user_label'] === 'Primary Admin' || empty($authInfo['key_id'])),
+        'snapshot_meta' => $snapshotMeta
     ]);
 }
 
@@ -1438,6 +1520,24 @@ elseif ($action === 'getSearchAnalytics') {
     $page_size = max(5, min(100, (int)($_GET['page_size'] ?? 20)));
     $sort_by = $_GET['sort_by'] ?? 'search_count';
     $sort_order = (strtolower($_GET['sort_order'] ?? 'desc') === 'asc') ? 'ASC' : 'DESC';
+
+    $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']) || !empty($input['force_refresh']) || !empty($input['refresh']);
+    $searchCacheKey = 'gtanalytic_search_' . md5($period . '_' . $category_filter . '_' . $search_type_filter . '_' . $min_volume . '_' . $search_term . '_' . $page . '_' . $page_size . '_' . $sort_by . '_' . $sort_order);
+
+    if (!$forceRefresh) {
+        $cached = getAnalyticsSnapshotCache($searchCacheKey, 7200);
+        if ($cached !== null) {
+            $meta = $cached['_cache_meta'] ?? [];
+            unset($cached['_cache_meta']);
+            $cached['snapshot_meta'] = $meta;
+            echo json_encode([
+                'status' => 'success',
+                'data' => $cached,
+                'snapshot_meta' => $meta
+            ]);
+            exit();
+        }
+    }
 
     $today_str = date('Y-m-d');
     $granularity = 'daily';
@@ -2057,10 +2157,8 @@ elseif ($action === 'getSearchAnalytics') {
         }
     }
 
-    echo json_encode([
-        'status' => 'success',
-        'data' => [
-            'period' => $period,
+    $search_payload = [
+        'period' => $period,
             'period_label' => $period_label,
             'prev_period_label' => $prev_period_label,
             'date_range' => [
@@ -2116,9 +2214,26 @@ elseif ($action === 'getSearchAnalytics') {
             'zero_results' => $zero_result_searches,
             'search_spikes' => $search_spikes,
             'recent_activity' => $recent_activity
-        ]
-    ]);
-    exit();
+        ];
+
+        $now = time();
+        $snapshotMeta = [
+            'is_cached' => false,
+            'cached_at' => date('Y-m-d H:i:s', $now),
+            'cached_at_formatted' => date('h:i A', $now),
+            'next_update_formatted' => date('h:i A', $now + 7200),
+            'ttl_seconds' => 7200,
+            'age_seconds' => 0
+        ];
+        setAnalyticsSnapshotCache($searchCacheKey, $search_payload, 7200);
+        $search_payload['snapshot_meta'] = $snapshotMeta;
+
+        echo json_encode([
+            'status' => 'success',
+            'data' => $search_payload,
+            'snapshot_meta' => $snapshotMeta
+        ]);
+        exit();
     } catch (Throwable $e) {
         returnError("Search analytics error: " . $e->getMessage(), $e->getTraceAsString());
     }
@@ -2219,6 +2334,24 @@ elseif ($action === 'getDailySummary') {
         // Validate date format
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $target_date)) {
             $target_date = date('Y-m-d');
+        }
+
+        $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']) || !empty($input['force_refresh']) || !empty($input['refresh']);
+        $dailyCacheKey = 'gtanalytic_daily_' . $target_date;
+
+        if (!$forceRefresh) {
+            $cached = getAnalyticsSnapshotCache($dailyCacheKey, 7200);
+            if ($cached !== null) {
+                $meta = $cached['_cache_meta'] ?? [];
+                unset($cached['_cache_meta']);
+                $cached['snapshot_meta'] = $meta;
+                echo json_encode([
+                    'status' => 'success',
+                    'data' => $cached,
+                    'snapshot_meta' => $meta
+                ]);
+                exit();
+            }
         }
 
         $summary = [
@@ -2389,7 +2522,19 @@ elseif ($action === 'getDailySummary') {
         }
         $summary['recent_days'] = $recent_days;
 
-        echo json_encode(['status' => 'success', 'data' => $summary]);
+        $now = time();
+        $snapshotMeta = [
+            'is_cached' => false,
+            'cached_at' => date('Y-m-d H:i:s', $now),
+            'cached_at_formatted' => date('h:i A', $now),
+            'next_update_formatted' => date('h:i A', $now + 7200),
+            'ttl_seconds' => 7200,
+            'age_seconds' => 0
+        ];
+        setAnalyticsSnapshotCache($dailyCacheKey, $summary, 7200);
+        $summary['snapshot_meta'] = $snapshotMeta;
+
+        echo json_encode(['status' => 'success', 'data' => $summary, 'snapshot_meta' => $snapshotMeta]);
         exit();
     } catch (Throwable $e) {
         returnError("Daily summary error: " . $e->getMessage());
@@ -2407,6 +2552,24 @@ elseif ($action === 'getUserActivity') {
         $filter = $_GET['filter'] ?? 'last_28_days';
         $compare_day_a = isset($_GET['compare_a']) ? (int)$_GET['compare_a'] : 0; // 0=Sunday
         $compare_day_b = isset($_GET['compare_b']) ? (int)$_GET['compare_b'] : 3; // 3=Wednesday
+
+        $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']) || !empty($input['force_refresh']) || !empty($input['refresh']);
+        $userActCacheKey = 'gtanalytic_user_activity_' . md5($filter . '_' . $compare_day_a . '_' . $compare_day_b);
+
+        if (!$forceRefresh) {
+            $cached = getAnalyticsSnapshotCache($userActCacheKey, 7200);
+            if ($cached !== null) {
+                $meta = $cached['_cache_meta'] ?? [];
+                unset($cached['_cache_meta']);
+                $cached['snapshot_meta'] = $meta;
+                echo json_encode([
+                    'status' => 'success',
+                    'data' => $cached,
+                    'snapshot_meta' => $meta
+                ]);
+                exit();
+            }
+        }
 
         // Determine date range for current and previous period
         $days_span = 28;
@@ -2771,7 +2934,19 @@ elseif ($action === 'getUserActivity') {
             'day_vs_day' => $day_vs_day
         ];
 
-        echo json_encode(['status' => 'success', 'data' => $response]);
+        $now = time();
+        $snapshotMeta = [
+            'is_cached' => false,
+            'cached_at' => date('Y-m-d H:i:s', $now),
+            'cached_at_formatted' => date('h:i A', $now),
+            'next_update_formatted' => date('h:i A', $now + 7200),
+            'ttl_seconds' => 7200,
+            'age_seconds' => 0
+        ];
+        setAnalyticsSnapshotCache($userActCacheKey, $response, 7200);
+        $response['snapshot_meta'] = $snapshotMeta;
+
+        echo json_encode(['status' => 'success', 'data' => $response, 'snapshot_meta' => $snapshotMeta]);
         exit();
 
     } catch (Throwable $e) {

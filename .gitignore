@@ -8,3 +8,6 @@ curated-songs.json
 
 # Ignore uploads
 uploads/
+
+# Ignore snapshot cache
+cache/
