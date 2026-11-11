@@ -537,31 +537,8 @@ if ($action === 'recordPlay') {
 } 
 
 elseif ($action === 'recordGuestPing') {
-    $guest_id = $input['guest_id'] ?? null;
-    $seconds = (int)($input['seconds'] ?? 60);
-    $current_page = $input['current_page'] ?? '';
-    $last_search = $input['last_search'] ?? '';
-    $device_type = trim($input['device_type'] ?? '');
-    $os = trim($input['os'] ?? '');
-    $browser = trim($input['browser'] ?? '');
-    $screen_size = trim($input['screen_size'] ?? '');
-    $ip = getClientIP();
-    
-    // Discard bot & excluded IP tracking
-    if (isTrackingBlocked($ip, $current_page, $conn)) {
-        echo json_encode(['status' => 'ignored', 'reason' => 'bot_or_excluded']);
-        exit();
-    }
-    
-    if ($guest_id) {
-        $stmt = $conn->prepare("INSERT INTO guest_analytics (guest_id, first_seen, last_active, total_plays, total_time_seconds, ip_address, current_page, last_search, device_type, os, browser, screen_size) VALUES (?, NOW(), NOW(), 0, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE total_time_seconds = total_time_seconds + ?, ip_address = VALUES(ip_address), current_page = IF(VALUES(current_page) != '', VALUES(current_page), current_page), last_search = IF(VALUES(last_search) != '', VALUES(last_search), last_search), device_type = IF(VALUES(device_type) != '', VALUES(device_type), device_type), os = IF(VALUES(os) != '', VALUES(os), os), browser = IF(VALUES(browser) != '', VALUES(browser), browser), screen_size = IF(VALUES(screen_size) != '', VALUES(screen_size), screen_size), last_active = NOW()");
-        $stmt->bind_param("sisssssssi", $guest_id, $seconds, $ip, $current_page, $last_search, $device_type, $os, $browser, $screen_size, $seconds);
-        $stmt->execute();
-
-        // Hourly user activity ping
-        @$conn->query("INSERT INTO hourly_user_activity (stat_date, stat_hour, day_of_week, guest_pings, active_users) VALUES (CURDATE(), HOUR(NOW()), DAYOFWEEK(CURDATE()), 1, 1) ON DUPLICATE KEY UPDATE guest_pings = guest_pings + 1, active_users = active_users + 1");
-    }
-    echo json_encode(['status' => 'success']);
+    // Disabled: Live visitor tracking is handled via Google Analytics (GA4) with 0 server load
+    echo json_encode(['status' => 'disabled']);
     exit();
 }
 
