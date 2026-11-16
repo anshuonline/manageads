@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 
 $results = [
+    'dir' => __DIR__,
     'ads_txt_updated' => [],
     'htaccess_cleaned' => [],
     'errors' => []
@@ -19,7 +20,9 @@ $possibleAdsLocations = [
     __DIR__ . '/../ads.txt',
     __DIR__ . '/../../ads.txt',
     '/home/u651445555/domains/ganatube.in/public_html/ads.txt',
-    '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/ads.txt'
+    '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/ads.txt',
+    __DIR__ . '/../../ganatube.in/public_html/ads.txt',
+    __DIR__ . '/../../ganatube.in/public_html/dist/ganatube/browser/ads.txt'
 ];
 
 foreach ($possibleAdsLocations as $loc) {
@@ -38,7 +41,9 @@ $possibleHtaccess = [
     __DIR__ . '/../.htaccess',
     __DIR__ . '/../../.htaccess',
     '/home/u651445555/domains/ganatube.in/public_html/.htaccess',
-    '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/.htaccess'
+    '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/.htaccess',
+    __DIR__ . '/../../ganatube.in/public_html/.htaccess',
+    __DIR__ . '/../../ganatube.in/public_html/dist/ganatube/browser/.htaccess'
 ];
 
 foreach ($possibleHtaccess as $htPath) {
