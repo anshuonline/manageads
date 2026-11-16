@@ -19,6 +19,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+if ($action === 'sync_pubfuture_ads') {
+    $results = ['dir' => __DIR__];
+    $pubRedirect = "Redirect 301 /ads.txt https://adstxt-ssp.pubfuture.com/site/6afaae206fecc7003d0ad28b/ganatube.in/ads.txt";
+    
+    $files = [
+        __DIR__ . '/../.htaccess',
+        __DIR__ . '/../../.htaccess',
+        '/home/u651445555/domains/ganatube.in/public_html/.htaccess',
+        '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/.htaccess',
+        __DIR__ . '/../../ganatube.in/public_html/.htaccess'
+    ];
+    foreach ($files as $f) {
+        if (file_exists($f)) {
+            $c = file_get_contents($f);
+            $c = preg_replace('/Redirect 301 \/ads\.txt https:\/\/srv\.adstxtmanager\.com[^\r\n]*[\r\n]*/', '', $c);
+            $c = preg_replace('/RewriteRule \^ads\\\.txt\$ https:\/\/srv\.adstxtmanager\.com[^\r\n]*[\r\n]*/', '', $c);
+            if (strpos($c, 'adstxt-ssp.pubfuture.com') === false) {
+                $c = $pubRedirect . "\n" . $c;
+            }
+            file_put_contents($f, $c);
+            $results['htaccess'][] = realpath($f) ?: $f;
+        }
+    }
+    
+    $adsLocations = [
+        __DIR__ . '/../ads.txt',
+        __DIR__ . '/../../ads.txt',
+        '/home/u651445555/domains/ganatube.in/public_html/ads.txt',
+        '/home/u651445555/domains/ganatube.in/public_html/dist/ganatube/browser/ads.txt',
+        __DIR__ . '/../../ganatube.in/public_html/ads.txt'
+    ];
+    foreach ($adsLocations as $loc) {
+        if (file_exists($loc)) {
+            @unlink($loc);
+            $results['ads_deleted'][] = $loc;
+        }
+    }
+    
+    echo json_encode(['status' => 'success', 'results' => $results]);
+    exit();
+}
+
 // Function to handle database errors
 function returnError($message, $error = null) {
     echo json_encode(['status' => 'error', 'message' => $message, 'error' => $error]);
