@@ -243,9 +243,13 @@ elseif ($action === 'updatePlaylist') {
     $sql = "UPDATE user_playlists SET " . implode(', ', $updates) . " WHERE playlist_id = '$playlist_id' AND email = '$email'";
 
     if ($conn->query($sql) === TRUE) {
-        // Fetch updated data to return
-        $res = $conn->query("SELECT * FROM user_playlists WHERE playlist_id = '$playlist_id'");
-        $row = $res->fetch_assoc();
+        // Fetch updated data to return (strictly scoped to owner email)
+        $res = $conn->query("SELECT * FROM user_playlists WHERE playlist_id = '$playlist_id' AND email = '$email'");
+        $row = $res ? $res->fetch_assoc() : null;
+        if (!$row) {
+            echo json_encode(["status" => "error", "message" => "Playlist not found or you don't have permission"]);
+            exit;
+        }
         
         echo json_encode([
             "status" => "success", 
