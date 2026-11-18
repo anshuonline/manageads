@@ -1,7 +1,7 @@
 <?php
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-ManageGT-Token");
 header("Content-Type: application/json");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -120,16 +120,108 @@ require_once 'config.php';
 date_default_timezone_set('Asia/Kolkata');
 $conn->query("SET time_zone = '+05:30'");
 
+// ── ManageGT Signed Admin Token Helpers (HMAC-SHA256) ────────────────────────
+function manageGtSigningSecret(): string {
+    global $db_host, $db_user, $db_pass, $db_name;
+    return hash('sha256', 'gt_managegt_hmac_v1|' . ($db_host ?? '') . '|' . ($db_user ?? '') . '|' . ($db_pass ?? '') . '|' . ($db_name ?? ''), true);
+}
+
+function manageGtBase64UrlEncode(string $data): string {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function manageGtBase64UrlDecode(string $data): string {
+    $pad = strlen($data) % 4;
+    if ($pad) $data .= str_repeat('=', 4 - $pad);
+    return base64_decode(strtr($data, '-_', '+/')) ?: '';
+}
+
+function issueManageGtToken(int $adminId, string $username): string {
+    $now = time();
+    $payload = manageGtBase64UrlEncode(json_encode([
+        'uid' => $adminId,
+        'u'   => $username,
+        'iat' => $now,
+        'exp' => $now + (7 * 86400),
+    ]));
+    $sig = manageGtBase64UrlEncode(hash_hmac('sha256', $payload, manageGtSigningSecret(), true));
+    return 'gtm1.' . $payload . '.' . $sig;
+}
+
+function getManageGtRequestToken(): ?string {
+    $token = $_SERVER['HTTP_X_MANAGEGT_TOKEN'] ?? '';
+    if (!$token && function_exists('getallheaders')) {
+        foreach (getallheaders() as $k => $v) {
+            if (strtolower($k) === 'x-managegt-token' && trim($v) !== '') {
+                $token = trim($v);
+                break;
+            }
+        }
+    }
+    if (!$token) {
+        $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+        if (!$auth && function_exists('getallheaders')) {
+            foreach (getallheaders() as $k => $v) {
+                if (strtolower($k) === 'authorization') {
+                    $auth = $v;
+                    break;
+                }
+            }
+        }
+        if (preg_match('/^\s*Bearer\s+(.+)\s*$/i', $auth, $m)) {
+            $token = trim($m[1]);
+        }
+    }
+    return $token !== '' ? $token : null;
+}
+
+function requireManageGtAdmin(): array {
+    global $conn;
+    $token = getManageGtRequestToken();
+    if (!$token || substr_count($token, '.') !== 2) {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Unauthorized: Admin login required"]);
+        exit();
+    }
+    [$prefix, $payloadB64, $sigB64] = explode('.', $token, 3);
+    if ($prefix !== 'gtm1') {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Unauthorized: Invalid token version — please log in again"]);
+        exit();
+    }
+    $expectedSig = manageGtBase64UrlEncode(hash_hmac('sha256', $payloadB64, manageGtSigningSecret(), true));
+    if (!hash_equals($expectedSig, $sigB64)) {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Unauthorized: Invalid admin token"]);
+        exit();
+    }
+    $payload = json_decode(manageGtBase64UrlDecode($payloadB64), true);
+    if (!is_array($payload) || empty($payload['u']) || empty($payload['exp']) || time() > (int)$payload['exp']) {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Unauthorized: Admin session expired — please log in again"]);
+        exit();
+    }
+    $uEsc = $conn->real_escape_string((string)$payload['u']);
+    $chk = $conn->query("SELECT id, username FROM admins WHERE username = '$uEsc' LIMIT 1");
+    if (!$chk || $chk->num_rows !== 1) {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Unauthorized: Admin account not found"]);
+        exit();
+    }
+    return $payload;
+}
+
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $username = $conn->real_escape_string($data['username'] ?? '');
     $password = $data['password'] ?? '';
     
     $res = $conn->query("SELECT * FROM admins WHERE username = '$username'");
-    if ($res->num_rows === 1) {
+    if ($res && $res->num_rows === 1) {
         $row = $res->fetch_assoc();
         if (md5($password) === $row['password']) {
-            echo json_encode(["status" => "success", "token" => "gt-auth-token-".time()]);
+            $signedToken = issueManageGtToken((int)($row['id'] ?? 1), (string)$row['username']);
+            echo json_encode(["status" => "success", "token" => $signedToken]);
             exit();
         }
     }
@@ -176,6 +268,7 @@ if ($action === 'get_sections') {
 }
 
 if ($action === 'save_sections' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['sectionsData'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload"]);
@@ -207,6 +300,7 @@ if ($action === 'get_discovery') {
 }
 
 if ($action === 'save_discovery' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['discoveryData'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload"]);
@@ -331,6 +425,7 @@ if ($action === 'get_playlists') {
 }
 
 if ($action === 'save_playlists' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['playlistsData'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing playlistsData"]);
@@ -362,6 +457,7 @@ if ($action === 'get_header') {
 }
 
 if ($action === 'save_header' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['headerData'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing headerData"]);
@@ -393,6 +489,7 @@ if ($action === 'get_popups') {
 }
 
 if ($action === 'save_popups' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['popupsData'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing popupsData"]);
@@ -424,6 +521,7 @@ if ($action === 'get_blocked_content') {
 }
 
 if ($action === 'save_blocked_content' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($data['blockedContent'])) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "Invalid payload — missing blockedContent"]);
@@ -444,6 +542,7 @@ if ($action === 'save_blocked_content' && $_SERVER['REQUEST_METHOD'] === 'POST')
 // ── Image Upload ──────────────────────────────────────────────────────────────
 
 if ($action === 'upload_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireManageGtAdmin();
     if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
         echo json_encode(["status" => "error", "message" => "No image uploaded or upload error"]);
@@ -477,9 +576,13 @@ if ($action === 'upload_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$image) {
-        // If not a supported type or SVG (which can't be processed by GD easily)
-        // Just move the file directly without optimization
-        $ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+        $ext = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
+        $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        if (!in_array($ext, $allowedExt, true)) {
+            http_response_code(400);
+            echo json_encode(["status" => "error", "message" => "Unsupported image extension."]);
+            exit();
+        }
         $new_filename = uniqid('img_') . '.' . $ext;
         $target_path = $upload_dir . $new_filename;
         move_uploaded_file($tmp_name, $target_path);

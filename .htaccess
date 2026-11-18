@@ -2,7 +2,7 @@
     # Allow cross-origin requests from ganatube.in and betatesting.ganatube.in
     Header set Access-Control-Allow-Origin "*"
     Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-ManageGT-Token"
     Header set Access-Control-Max-Age "86400"
 </IfModule>
 
