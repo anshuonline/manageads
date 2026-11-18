@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 require_once 'config.php';
 require_once 'mailer.php';
+require_once 'firebase_auth.php';
 
 // Ensure welcome_email_sent column exists
 $col_check = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'welcome_email_sent'");
@@ -35,14 +36,10 @@ if ($col_check_photo && $col_check_photo->num_rows == 0) {
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 if ($action === 'getProfile') {
-    $email = isset($_GET['email']) ? $conn->real_escape_string(trim($_GET['email'])) : '';
-    $name = isset($_GET['name']) ? $conn->real_escape_string(trim($_GET['name'])) : '';
-    $photo = isset($_GET['photo']) ? $conn->real_escape_string(trim($_GET['photo'])) : '';
-    
-    if (empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Email is required"]);
-        exit;
-    }
+    $fbUser = gtRequireFirebaseUser();
+    $email = $conn->real_escape_string($fbUser['email']);
+    $name = isset($_GET['name']) ? $conn->real_escape_string(trim($_GET['name'])) : $conn->real_escape_string($fbUser['name']);
+    $photo = isset($_GET['photo']) ? $conn->real_escape_string(trim($_GET['photo'])) : $conn->real_escape_string($fbUser['picture']);
 
     $sql = "SELECT display_name, photo_url, preferred_languages, liked_songs, recent_plays, listening_preferences, welcome_email_sent, total_plays FROM user_profiles WHERE email = '$email'";
     $result = $conn->query($sql);
@@ -118,13 +115,9 @@ if ($action === 'getProfile') {
     }
 } 
 elseif ($action === 'updateProfile') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
-    
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
-    if (empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Email is required"]);
-        exit;
-    }
+    $email = $conn->real_escape_string($fbUser['email']);
 
     $preferred_languages = isset($data['preferred_languages']) ? $conn->real_escape_string(json_encode($data['preferred_languages'])) : '[]';
     $liked_songs = isset($data['liked_songs']) ? $conn->real_escape_string(json_encode($data['liked_songs'])) : '[]';
@@ -165,23 +158,21 @@ elseif ($action === 'updateProfile') {
     }
 } 
 elseif ($action === 'recordPlay') {
-    $email = isset($_GET['email']) ? $conn->real_escape_string(trim($_GET['email'])) : '';
-    if (!empty($email)) {
-        $conn->query("UPDATE user_profiles SET total_plays = GREATEST(COALESCE(total_plays, 0) + 1, 1) WHERE email = '$email'");
-        echo json_encode(["status" => "success"]);
-        exit;
-    }
-    echo json_encode(["status" => "error", "message" => "Email required"]);
+    $fbUser = gtRequireFirebaseUser();
+    $email = $conn->real_escape_string($fbUser['email']);
+    $conn->query("UPDATE user_profiles SET total_plays = GREATEST(COALESCE(total_plays, 0) + 1, 1) WHERE email = '$email'");
+    echo json_encode(["status" => "success"]);
     exit;
 } 
 elseif ($action === 'updateUsername') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     $display_name = isset($data['display_name']) ? $conn->real_escape_string($data['display_name']) : '';
     $auto = isset($data['auto']) ? $data['auto'] : false;
     
-    if (empty($email) || empty($display_name)) {
-        echo json_encode(["status" => "error", "message" => "Email and display_name are required"]);
+    if (empty($display_name)) {
+        echo json_encode(["status" => "error", "message" => "display_name is required"]);
         exit;
     }
 
@@ -220,6 +211,7 @@ elseif ($action === 'updateUsername') {
     }
 }
 elseif ($action === 'getAllUsers') {
+    gtRequireAdminUser();
     $sql = "SELECT email, display_name, photo_url, preferred_languages, liked_songs, recent_plays, listening_preferences, created_at, updated_at FROM user_profiles ORDER BY created_at DESC";
     $result = $conn->query($sql);
     $users = [];
@@ -240,14 +232,10 @@ elseif ($action === 'getAllUsers') {
     ]);
 }
 elseif ($action === 'sendWelcomeEmail') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
-    $email = isset($data['email']) ? $conn->real_escape_string(trim($data['email'])) : '';
-    $name = isset($data['name']) ? $conn->real_escape_string(trim($data['name'])) : '';
-
-    if (empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Email is required"]);
-        exit;
-    }
+    $email = $conn->real_escape_string($fbUser['email']);
+    $name = isset($data['name']) ? $conn->real_escape_string(trim($data['name'])) : $conn->real_escape_string($fbUser['name']);
 
     $force = !empty($data['force']);
     $chk = $conn->query("SELECT welcome_email_sent, display_name FROM user_profiles WHERE email = '$email'");

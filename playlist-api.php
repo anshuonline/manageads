@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 require_once 'config.php';
+require_once 'firebase_auth.php';
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -21,12 +22,8 @@ function generatePlaylistId() {
 }
 
 if ($action === 'getPlaylists') {
-    $email = isset($_GET['email']) ? $conn->real_escape_string($_GET['email']) : '';
-    
-    if (empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Email is required"]);
-        exit;
-    }
+    $fbUser = gtRequireFirebaseUser();
+    $email = $conn->real_escape_string($fbUser['email']);
 
     $sql = "
         SELECT p.playlist_id, p.playlist_name, p.is_public, p.songs, p.created_at, p.updated_at, 1 as is_owner, p.email as owner_email, u.display_name, p.play_count
@@ -69,7 +66,8 @@ if ($action === 'getPlaylists') {
 } 
 elseif ($action === 'getPublicPlaylist') {
     $playlist_id = isset($_GET['playlist_id']) ? $conn->real_escape_string($_GET['playlist_id']) : '';
-    $email = isset($_GET['email']) ? $conn->real_escape_string($_GET['email']) : '';
+    $fbUser = gtVerifyFirebaseToken(gtGetBearerToken());
+    $email = $fbUser ? $conn->real_escape_string($fbUser['email']) : '';
     
     if (empty($playlist_id)) {
         echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
@@ -184,17 +182,13 @@ elseif ($action === 'getAllPublicPlaylists') {
     ]);
 }
 elseif ($action === 'createPlaylist') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
     
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     $playlist_name = isset($data['playlist_name']) ? $conn->real_escape_string($data['playlist_name']) : 'New Playlist';
     $is_public = isset($data['is_public']) ? (int)$data['is_public'] : 0;
     $songs = isset($data['songs']) ? $conn->real_escape_string(json_encode($data['songs'])) : '[]';
-    
-    if (empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Email is required"]);
-        exit;
-    }
 
     $playlist_id = generatePlaylistId();
     $sql = "INSERT INTO user_playlists (playlist_id, email, playlist_name, is_public, songs) 
@@ -218,13 +212,14 @@ elseif ($action === 'createPlaylist') {
     }
 } 
 elseif ($action === 'updatePlaylist') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     
-    if (empty($playlist_id) || empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
         exit;
     }
 
@@ -269,13 +264,14 @@ elseif ($action === 'updatePlaylist') {
     }
 } 
 elseif ($action === 'deletePlaylist') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     
-    if (empty($playlist_id) || empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
         exit;
     }
 
@@ -319,15 +315,16 @@ elseif ($action === 'getPublicPlaylists') {
     ]);
 }
 elseif ($action === 'savePlaylist') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     $playlist_name = isset($data['playlist_name']) ? $conn->real_escape_string($data['playlist_name']) : '';
     $songs = isset($data['songs']) && is_array($data['songs']) ? $conn->real_escape_string(json_encode($data['songs'])) : '[]';
     
-    if (empty($playlist_id) || empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
         exit;
     }
 
@@ -352,13 +349,14 @@ elseif ($action === 'savePlaylist') {
     }
 }
 elseif ($action === 'unsavePlaylist') {
+    $fbUser = gtRequireFirebaseUser();
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
-    $email = isset($data['email']) ? $conn->real_escape_string($data['email']) : '';
+    $email = $conn->real_escape_string($fbUser['email']);
     
-    if (empty($playlist_id) || empty($email)) {
-        echo json_encode(["status" => "error", "message" => "Playlist ID and Email are required"]);
+    if (empty($playlist_id)) {
+        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
         exit;
     }
 
