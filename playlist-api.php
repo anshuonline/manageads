@@ -44,13 +44,14 @@ if ($action === 'getPlaylists') {
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['owner_email'])[0];
+            $isOwner = (bool)$row['is_owner'];
             $playlists[] = [
                 "playlist_id" => $row['playlist_id'],
                 "playlist_name" => $row['playlist_name'],
                 "is_public" => (bool)$row['is_public'],
                 "songs" => json_decode($row['songs']),
-                "is_owner" => (bool)$row['is_owner'],
-                "owner_email" => $row['owner_email'],
+                "is_owner" => $isOwner,
+                "owner_email" => $isOwner ? $row['owner_email'] : "",
                 "owner" => $ownerName,
                 "play_count" => (int)$row['play_count'],
                 "created_at" => $row['created_at'],
@@ -83,7 +84,8 @@ elseif ($action === 'getPublicPlaylist') {
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
         
-        if ((bool)$row['is_public'] || $row['email'] === $email) {
+        if ((bool)$row['is_public'] || ($email !== '' && $row['email'] === $email)) {
+            $isOwner = ($email !== '' && $row['email'] === $email);
             $ownerName = !empty($row['display_name']) ? $row['display_name'] : explode('@', $row['email'])[0];
             echo json_encode([
                 "status" => "success",
@@ -92,8 +94,9 @@ elseif ($action === 'getPublicPlaylist') {
                     "playlist_name" => $row['playlist_name'],
                     "is_public" => (bool)$row['is_public'],
                     "songs" => json_decode($row['songs']),
-                    "owner" => $ownerName, 
-                    "owner_email" => $row['email'],
+                    "owner" => $ownerName,
+                    "is_owner" => $isOwner,
+                    "owner_email" => $isOwner ? $row['email'] : "",
                     "play_count" => (int)$row['play_count'],
                     "created_at" => $row['created_at'],
                     "updated_at" => $row['updated_at']
