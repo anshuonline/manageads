@@ -631,6 +631,16 @@ elseif ($action === 'recordAppInterest') {
                 updated_at = CURRENT_TIMESTAMP";
 
     if ($conn->query($sql)) {
+        // Invalidate analytics snapshot caches so new votes appear immediately on dashboard
+        $cacheDir = __DIR__ . '/cache';
+        if (is_dir($cacheDir)) {
+            $cFiles = glob($cacheDir . '/gtanalytic_*');
+            if ($cFiles) {
+                foreach ($cFiles as $cf) {
+                    @unlink($cf);
+                }
+            }
+        }
         echo json_encode(['status' => 'success', 'choice' => $choice]);
     } else {
         returnError("Failed to record interest: " . $conn->error);
@@ -680,13 +690,18 @@ elseif ($action === 'getAppInterest') {
         $stats['pc_count'] = intval($row['pc_count'] ?? 0);
     }
 
-    $recent_res = $conn->query("SELECT choice, is_guest, email, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 20");
+    $recent_res = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 30");
     if ($recent_res) {
         while ($r = $recent_res->fetch_assoc()) {
             $stats['recent'][] = $r;
         }
     }
 
+    if (!headers_sent()) {
+        header("Cache-Control: no-cache, no-store, must-revalidate");
+        header("Pragma: no-cache");
+        header("Expires: 0");
+    }
     echo json_encode(['status' => 'success', 'data' => $stats]);
     exit();
 }
@@ -997,7 +1012,7 @@ elseif ($action === 'getAnalytics') {
         $app_interest_stats['pc_count'] = intval($row['pc_count'] ?? 0);
     }
 
-    $ai_recent = $conn->query("SELECT choice, is_guest, email, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 15");
+    $ai_recent = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 25");
     if ($ai_recent) {
         while ($r = $ai_recent->fetch_assoc()) {
             $app_interest_stats['recent'][] = $r;
