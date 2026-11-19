@@ -376,20 +376,9 @@ elseif ($action === 'unsavePlaylist') {
     }
 }
 elseif ($action === 'incrementPlayCount') {
-    $data = json_decode(file_get_contents("php://input"), true);
-    $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
-    
-    if (empty($playlist_id)) {
-        echo json_encode(["status" => "error", "message" => "Playlist ID is required"]);
-        exit;
-    }
-
-    $sql = "UPDATE user_playlists SET play_count = play_count + 1 WHERE playlist_id = '$playlist_id'";
-    if ($conn->query($sql) === TRUE) {
-        echo json_encode(["status" => "success", "message" => "Play count incremented"]);
-    } else {
-        echo json_encode(["status" => "error", "message" => "Error updating play count: " . $conn->error]);
-    }
+    // Disabled to eliminate database writes and server traffic
+    echo json_encode(["status" => "success", "disabled" => true]);
+    exit;
 }
 else {
     echo json_encode(["status" => "error", "message" => "Invalid action"]);
