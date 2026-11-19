@@ -1,9 +1,9 @@
 <IfModule mod_headers.c>
-    # Allow cross-origin requests from ganatube.in and betatesting.ganatube.in
-    Header set Access-Control-Allow-Origin "*"
-    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-ManageGT-Token"
-    Header set Access-Control-Max-Age "86400"
+    # Allow cross-origin requests from ganatube.in and betatesting.ganatube.in (always set ensures CORS even on 4xx/5xx errors)
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-ManageGT-Token"
+    Header always set Access-Control-Max-Age "86400"
 </IfModule>
 
 <IfModule mod_rewrite.c>
