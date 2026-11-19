@@ -209,10 +209,18 @@ function ensureAppInterestTable($conn) {
         os VARCHAR(50) DEFAULT 'Unknown',
         browser VARCHAR(50) DEFAULT 'Unknown',
         ip_address VARCHAR(45) DEFAULT '',
+        city VARCHAR(100) DEFAULT '',
+        country VARCHAR(100) DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_user_vote (user_identifier)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Add city & country columns if table was created without them
+    $colCheck = $conn->query("SHOW COLUMNS FROM gt_app_interest LIKE 'city'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        @$conn->query("ALTER TABLE gt_app_interest ADD COLUMN city VARCHAR(100) DEFAULT '' AFTER ip_address, ADD COLUMN country VARCHAR(100) DEFAULT '' AFTER city");
+    }
     $created = true;
 }
 
@@ -617,17 +625,32 @@ elseif ($action === 'recordAppInterest') {
     $ip = $conn->real_escape_string(getClientIP());
     $userIdClean = $conn->real_escape_string($userId);
 
+    // Resolve city and country from Cloudflare headers, input, or GeoIP
+    $city = trim($_SERVER['HTTP_CF_IPCITY'] ?? ($input['city'] ?? ''));
+    $country = trim($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ($input['country'] ?? ''));
+    if ((empty($city) || empty($country)) && !empty($ip)) {
+        $locs = resolveIPsLocations([$ip], $conn, 1);
+        if (!empty($locs[$ip])) {
+            if (empty($city)) $city = $locs[$ip]['city'] ?? '';
+            if (empty($country)) $country = $locs[$ip]['country_code'] ?? ($locs[$ip]['country'] ?? '');
+        }
+    }
+    $cityClean = $conn->real_escape_string($city);
+    $countryClean = $conn->real_escape_string($country);
+
     ensureAppInterestTable($conn);
 
     $emailSql = $email ? "'$email'" : "NULL";
-    $sql = "INSERT INTO gt_app_interest (choice, user_identifier, is_guest, email, device_type, os, browser, ip_address)
-            VALUES ('$choice', '$userIdClean', $isGuest, $emailSql, '$deviceType', '$os', '$browser', '$ip')
+    $sql = "INSERT INTO gt_app_interest (choice, user_identifier, is_guest, email, device_type, os, browser, ip_address, city, country)
+            VALUES ('$choice', '$userIdClean', $isGuest, $emailSql, '$deviceType', '$os', '$browser', '$ip', '$cityClean', '$countryClean')
             ON DUPLICATE KEY UPDATE 
                 choice = VALUES(choice),
                 device_type = VALUES(device_type),
                 os = VALUES(os),
                 browser = VALUES(browser),
                 ip_address = VALUES(ip_address),
+                city = VALUES(city),
+                country = VALUES(country),
                 updated_at = CURRENT_TIMESTAMP";
 
     if ($conn->query($sql)) {
@@ -690,11 +713,34 @@ elseif ($action === 'getAppInterest') {
         $stats['pc_count'] = intval($row['pc_count'] ?? 0);
     }
 
-    $recent_res = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 30");
+    $recent_res = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, ip_address, city, country, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 50");
     if ($recent_res) {
         while ($r = $recent_res->fetch_assoc()) {
             $stats['recent'][] = $r;
         }
+    }
+
+    // Auto-resolve city/country for any rows where city is still empty using their IP
+    $missingIps = [];
+    foreach ($stats['recent'] as $r) {
+        if (empty($r['city']) && !empty($r['ip_address'])) {
+            $missingIps[] = $r['ip_address'];
+        }
+    }
+    if (!empty($missingIps)) {
+        $locs = resolveIPsLocations($missingIps, $conn, 10);
+        foreach ($stats['recent'] as &$r) {
+            $ip = $r['ip_address'] ?? '';
+            if (empty($r['city']) && isset($locs[$ip])) {
+                $r['city'] = $locs[$ip]['city'] ?? '';
+                if (empty($r['country'])) $r['country'] = $locs[$ip]['country_code'] ?? ($locs[$ip]['country'] ?? '');
+                $cVal = $conn->real_escape_string($r['city']);
+                $coVal = $conn->real_escape_string($r['country']);
+                $uId = $conn->real_escape_string($r['user_identifier']);
+                @$conn->query("UPDATE gt_app_interest SET city = '$cVal', country = '$coVal' WHERE user_identifier = '$uId' AND (city = '' OR city IS NULL)");
+            }
+        }
+        unset($r);
     }
 
     if (!headers_sent()) {
@@ -1012,11 +1058,33 @@ elseif ($action === 'getAnalytics') {
         $app_interest_stats['pc_count'] = intval($row['pc_count'] ?? 0);
     }
 
-    $ai_recent = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 25");
+    $ai_recent = $conn->query("SELECT choice, is_guest, email, user_identifier, device_type, os, browser, ip_address, city, country, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 25");
     if ($ai_recent) {
         while ($r = $ai_recent->fetch_assoc()) {
             $app_interest_stats['recent'][] = $r;
         }
+    }
+
+    $ai_missing_ips = [];
+    foreach ($app_interest_stats['recent'] as $r) {
+        if (empty($r['city']) && !empty($r['ip_address'])) {
+            $ai_missing_ips[] = $r['ip_address'];
+        }
+    }
+    if (!empty($ai_missing_ips)) {
+        $ai_locs = resolveIPsLocations($ai_missing_ips, $conn, 10);
+        foreach ($app_interest_stats['recent'] as &$r) {
+            $ip = $r['ip_address'] ?? '';
+            if (empty($r['city']) && isset($ai_locs[$ip])) {
+                $r['city'] = $ai_locs[$ip]['city'] ?? '';
+                if (empty($r['country'])) $r['country'] = $ai_locs[$ip]['country_code'] ?? ($ai_locs[$ip]['country'] ?? '');
+                $cVal = $conn->real_escape_string($r['city']);
+                $coVal = $conn->real_escape_string($r['country']);
+                $uId = $conn->real_escape_string($r['user_identifier']);
+                @$conn->query("UPDATE gt_app_interest SET city = '$cVal', country = '$coVal' WHERE user_identifier = '$uId' AND (city = '' OR city IS NULL)");
+            }
+        }
+        unset($r);
     }
     $analytics['app_interest'] = $app_interest_stats;
 
