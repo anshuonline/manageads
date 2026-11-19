@@ -196,6 +196,26 @@ function ensureLoginLogsTable($conn) {
     $created = true;
 }
 
+function ensureAppInterestTable($conn) {
+    static $created = false;
+    if ($created) return;
+    $conn->query("CREATE TABLE IF NOT EXISTS gt_app_interest (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        choice ENUM('yes', 'not_sure') NOT NULL,
+        user_identifier VARCHAR(191) NOT NULL,
+        is_guest TINYINT(1) DEFAULT 1,
+        email VARCHAR(191) DEFAULT NULL,
+        device_type VARCHAR(50) DEFAULT 'Unknown',
+        os VARCHAR(50) DEFAULT 'Unknown',
+        browser VARCHAR(50) DEFAULT 'Unknown',
+        ip_address VARCHAR(45) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_vote (user_identifier)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $created = true;
+}
+
 function recordLoginAuditLog($conn, $authInfo, $input = []) {
     ensureLoginLogsTable($conn);
     $ip = getClientIP();
@@ -578,6 +598,99 @@ elseif ($action === 'recordJingleEvent') {
     exit();
 }
 
+elseif ($action === 'recordAppInterest') {
+    $choice = $input['choice'] ?? ($_POST['choice'] ?? '');
+    if (!in_array($choice, ['yes', 'not_sure'], true)) {
+        returnError("Valid choice required ('yes', 'not_sure')");
+    }
+
+    $userId = trim($input['user_identifier'] ?? $input['guest_id'] ?? $input['email'] ?? '');
+    if (empty($userId)) {
+        $userId = 'guest_' . md5(getClientIP() . ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    }
+
+    $email = !empty($input['email']) ? $conn->real_escape_string($input['email']) : null;
+    $isGuest = empty($email) ? 1 : 0;
+    $deviceType = $conn->real_escape_string($input['device_type'] ?? 'Unknown');
+    $os = $conn->real_escape_string($input['os'] ?? 'Unknown');
+    $browser = $conn->real_escape_string($input['browser'] ?? 'Unknown');
+    $ip = $conn->real_escape_string(getClientIP());
+    $userIdClean = $conn->real_escape_string($userId);
+
+    ensureAppInterestTable($conn);
+
+    $emailSql = $email ? "'$email'" : "NULL";
+    $sql = "INSERT INTO gt_app_interest (choice, user_identifier, is_guest, email, device_type, os, browser, ip_address)
+            VALUES ('$choice', '$userIdClean', $isGuest, $emailSql, '$deviceType', '$os', '$browser', '$ip')
+            ON DUPLICATE KEY UPDATE 
+                choice = VALUES(choice),
+                device_type = VALUES(device_type),
+                os = VALUES(os),
+                browser = VALUES(browser),
+                ip_address = VALUES(ip_address),
+                updated_at = CURRENT_TIMESTAMP";
+
+    if ($conn->query($sql)) {
+        echo json_encode(['status' => 'success', 'choice' => $choice]);
+    } else {
+        returnError("Failed to record interest: " . $conn->error);
+    }
+    exit();
+}
+
+elseif ($action === 'getAppInterest') {
+    $pwd = $_GET['pwd'] ?? ($input['pwd'] ?? '');
+    $authInfo = verifyAdminAuthWithDetails($conn, $pwd);
+    if (!$authInfo['authorized']) {
+        returnError("Unauthorized access");
+    }
+
+    ensureAppInterestTable($conn);
+    $res = $conn->query("SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN choice = 'yes' THEN 1 ELSE 0 END) as yes_count,
+        SUM(CASE WHEN choice = 'not_sure' THEN 1 ELSE 0 END) as not_sure_count,
+        SUM(CASE WHEN is_guest = 1 THEN 1 ELSE 0 END) as guest_count,
+        SUM(CASE WHEN is_guest = 0 THEN 1 ELSE 0 END) as user_count,
+        SUM(CASE WHEN device_type = 'Mobile' THEN 1 ELSE 0 END) as mobile_count,
+        SUM(CASE WHEN device_type = 'PC' THEN 1 ELSE 0 END) as pc_count
+    FROM gt_app_interest");
+
+    $stats = [
+        'total' => 0,
+        'yes' => 0,
+        'not_sure' => 0,
+        'yes_percent' => 0,
+        'not_sure_percent' => 0,
+        'mobile_count' => 0,
+        'pc_count' => 0,
+        'recent' => []
+    ];
+
+    if ($res && $row = $res->fetch_assoc()) {
+        $total = intval($row['total'] ?? 0);
+        $yes = intval($row['yes_count'] ?? 0);
+        $not_sure = intval($row['not_sure_count'] ?? 0);
+        $stats['total'] = $total;
+        $stats['yes'] = $yes;
+        $stats['not_sure'] = $not_sure;
+        $stats['yes_percent'] = $total > 0 ? round(($yes / $total) * 100, 1) : 0;
+        $stats['not_sure_percent'] = $total > 0 ? round(($not_sure / $total) * 100, 1) : 0;
+        $stats['mobile_count'] = intval($row['mobile_count'] ?? 0);
+        $stats['pc_count'] = intval($row['pc_count'] ?? 0);
+    }
+
+    $recent_res = $conn->query("SELECT choice, is_guest, email, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 20");
+    if ($recent_res) {
+        while ($r = $recent_res->fetch_assoc()) {
+            $stats['recent'][] = $r;
+        }
+    }
+
+    echo json_encode(['status' => 'success', 'data' => $stats]);
+    exit();
+}
+
 elseif ($action === 'getTop100Songs') {
     // Public endpoint for top 100 most played songs (used by discovery page)
     $forceRefresh = !empty($_GET['force_refresh']) || !empty($_GET['refresh']);
@@ -681,9 +794,8 @@ elseif ($action === 'getAnalytics') {
         $most_shared_q = "SELECT video_id, MAX(title) as title, MAX(thumbnail) as thumbnail, SUM(share_count) as share_count FROM daily_analytics WHERE stat_date >= CURDATE() - INTERVAL 7 DAY GROUP BY video_id ORDER BY share_count DESC LIMIT 50";
     }
     
-    // Get Most Played
-    $res = $conn->query($most_played_q);
-    if ($res) while($row = $res->fetch_assoc()) $analytics['most_played'][] = $row;
+    // Get Most Played (deprecated - stream tracking removed)
+    $analytics['most_played'] = [];
     
     // Get Most Liked
     $res = $conn->query($most_liked_q);
@@ -848,6 +960,50 @@ elseif ($action === 'getAnalytics') {
         $jingle_summary['completion_rate'] = $p > 0 ? round(($c / $p) * 100, 1) : 0;
     }
     $analytics['jingle_summary'] = $jingle_summary;
+
+    // Mobile App Interest Stats
+    ensureAppInterestTable($conn);
+    $ai_res = $conn->query("SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN choice = 'yes' THEN 1 ELSE 0 END) as yes_count,
+        SUM(CASE WHEN choice = 'not_sure' THEN 1 ELSE 0 END) as not_sure_count,
+        SUM(CASE WHEN is_guest = 1 THEN 1 ELSE 0 END) as guest_count,
+        SUM(CASE WHEN is_guest = 0 THEN 1 ELSE 0 END) as user_count,
+        SUM(CASE WHEN device_type = 'Mobile' THEN 1 ELSE 0 END) as mobile_count,
+        SUM(CASE WHEN device_type = 'PC' THEN 1 ELSE 0 END) as pc_count
+    FROM gt_app_interest");
+
+    $app_interest_stats = [
+        'total' => 0,
+        'yes' => 0,
+        'not_sure' => 0,
+        'yes_percent' => 0,
+        'not_sure_percent' => 0,
+        'mobile_count' => 0,
+        'pc_count' => 0,
+        'recent' => []
+    ];
+
+    if ($ai_res && $row = $ai_res->fetch_assoc()) {
+        $t = intval($row['total'] ?? 0);
+        $y = intval($row['yes_count'] ?? 0);
+        $ns = intval($row['not_sure_count'] ?? 0);
+        $app_interest_stats['total'] = $t;
+        $app_interest_stats['yes'] = $y;
+        $app_interest_stats['not_sure'] = $ns;
+        $app_interest_stats['yes_percent'] = $t > 0 ? round(($y / $t) * 100, 1) : 0;
+        $app_interest_stats['not_sure_percent'] = $t > 0 ? round(($ns / $t) * 100, 1) : 0;
+        $app_interest_stats['mobile_count'] = intval($row['mobile_count'] ?? 0);
+        $app_interest_stats['pc_count'] = intval($row['pc_count'] ?? 0);
+    }
+
+    $ai_recent = $conn->query("SELECT choice, is_guest, email, device_type, os, browser, created_at, updated_at FROM gt_app_interest ORDER BY updated_at DESC LIMIT 15");
+    if ($ai_recent) {
+        while ($r = $ai_recent->fetch_assoc()) {
+            $app_interest_stats['recent'][] = $r;
+        }
+    }
+    $analytics['app_interest'] = $app_interest_stats;
 
     $now = time();
     $snapshotMeta = [
