@@ -78,8 +78,8 @@ if (!$v) {
 
 $title = "Music";
 $description = "Listen on GanaTube";
-$target_url = "https://ganatube.in/?play=" . urlencode($v);
-$image_url = "https://manageads.ganatube.in/share.php?thumb=" . urlencode($v);
+$target_url = "https://ganatube.in/play?v=" . urlencode($v);
+$image_url = "https://ganatube.in/share.php?thumb=" . urlencode($v);
 
 // Fetch song details for OG tags using YouTube oEmbed (Reliable & fast)
 $oembed_url = "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" . urlencode($v) . "&format=json";
