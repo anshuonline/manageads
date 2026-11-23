@@ -232,6 +232,7 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Combined App Init (Performance: 4 queries in 1 request) ────────────────
 if ($action === 'app_init') {
+    header("Cache-Control: public, max-age=600, s-maxage=1800, stale-while-revalidate=3600");
     $result = [];
     // Sections
     $res = $conn->query("SELECT setting_value FROM app_settings WHERE setting_key = 'custom_sections'");

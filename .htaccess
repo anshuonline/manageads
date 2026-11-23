@@ -25,12 +25,8 @@
 </IfModule>
 
 <IfModule mod_headers.c>
-    # Cache curated-songs.json for 10 minutes (reduces PHP-equivalent hits)
-    <FilesMatch "curated-songs\.json$">
-        Header set Cache-Control "public, max-age=600"
-    </FilesMatch>
-    # Don't cache PHP API responses (they need fresh data)
+    # Set no-cache for PHP responses unless PHP script explicitly sets its own Cache-Control
     <FilesMatch "\.php$">
-        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header setifempty Cache-Control "no-cache, no-store, must-revalidate"
     </FilesMatch>
 </IfModule>
