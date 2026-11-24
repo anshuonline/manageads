@@ -16,34 +16,6 @@ require_once __DIR__ . '/config.php';
 date_default_timezone_set('Asia/Kolkata');
 @$conn->query("SET time_zone = '+05:30'");
 
-// Auto-create arcade tables if they don't exist yet
-@$conn->query("CREATE TABLE IF NOT EXISTS arcade_highscores (
-    game_id VARCHAR(32) NOT NULL PRIMARY KEY,
-    high_score INT NOT NULL DEFAULT 0,
-    player_name VARCHAR(100) NOT NULL DEFAULT 'Cyber Operative',
-    user_id VARCHAR(128) NULL,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-@$conn->query("CREATE TABLE IF NOT EXISTS arcade_score_logs (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    game_id VARCHAR(32) NOT NULL,
-    score INT NOT NULL,
-    player_name VARCHAR(100) NOT NULL DEFAULT 'Cyber Operative',
-    user_id VARCHAR(128) NULL,
-    duration_sec INT DEFAULT 0,
-    ip_address VARCHAR(45) NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_game_date (game_id, created_at),
-    INDEX idx_score (score)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-// Seed default highscore rows for the 3 games if missing
-$seedGames = ['snake', 'flappy', 'dino'];
-foreach ($seedGames as $g) {
-    @$conn->query("INSERT IGNORE INTO arcade_highscores (game_id, high_score, player_name) VALUES ('$g', 0, 'Cyber Operative')");
-}
-
 $action = $_GET['action'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($action)) {
     $action = $_POST['action'] ?? '';
