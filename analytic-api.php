@@ -1088,6 +1088,76 @@ elseif ($action === 'getAnalytics') {
     }
     $analytics['app_interest'] = $app_interest_stats;
 
+    // Arcade Games Telemetry & Highscores
+    $arcade_summary = [
+        'highscores' => [
+            'snake' => ['score' => 0, 'player_name' => 'Cyber Operative', 'updated_at' => null],
+            'flappy' => ['score' => 0, 'player_name' => 'Cyber Operative', 'updated_at' => null],
+            'dino' => ['score' => 0, 'player_name' => 'Cyber Operative', 'updated_at' => null]
+        ],
+        'total_plays_today' => 0,
+        'total_plays_all_time' => 0,
+        'games' => [
+            'snake' => ['today' => 0, 'all_time' => 0],
+            'flappy' => ['today' => 0, 'all_time' => 0],
+            'dino' => ['today' => 0, 'all_time' => 0]
+        ],
+        'recent_plays' => []
+    ];
+
+    $arcHs = @$conn->query("SELECT game_id, high_score, player_name, updated_at FROM arcade_highscores");
+    if ($arcHs) {
+        while ($hr = $arcHs->fetch_assoc()) {
+            $gid = $hr['game_id'];
+            if (isset($arcade_summary['highscores'][$gid])) {
+                $arcade_summary['highscores'][$gid] = [
+                    'score' => (int)$hr['high_score'],
+                    'player_name' => htmlspecialchars_decode($hr['player_name']),
+                    'updated_at' => $hr['updated_at']
+                ];
+            }
+        }
+    }
+
+    $arcToday = @$conn->query("SELECT game_id, COUNT(*) as cnt FROM arcade_score_logs WHERE DATE(created_at) = CURDATE() GROUP BY game_id");
+    if ($arcToday) {
+        while ($tr = $arcToday->fetch_assoc()) {
+            $gid = $tr['game_id'];
+            $c = (int)$tr['cnt'];
+            if (isset($arcade_summary['games'][$gid])) {
+                $arcade_summary['games'][$gid]['today'] = $c;
+            }
+            $arcade_summary['total_plays_today'] += $c;
+        }
+    }
+
+    $arcAll = @$conn->query("SELECT game_id, COUNT(*) as cnt FROM arcade_score_logs GROUP BY game_id");
+    if ($arcAll) {
+        while ($ar = $arcAll->fetch_assoc()) {
+            $gid = $ar['game_id'];
+            $c = (int)$ar['cnt'];
+            if (isset($arcade_summary['games'][$gid])) {
+                $arcade_summary['games'][$gid]['all_time'] = $c;
+            }
+            $arcade_summary['total_plays_all_time'] += $c;
+        }
+    }
+
+    $arcRec = @$conn->query("SELECT game_id, score, player_name, duration_sec, created_at FROM arcade_score_logs ORDER BY id DESC LIMIT 10");
+    if ($arcRec) {
+        while ($rr = $arcRec->fetch_assoc()) {
+            $arcade_summary['recent_plays'][] = [
+                'game_id' => $rr['game_id'],
+                'score' => (int)$rr['score'],
+                'player_name' => $rr['player_name'],
+                'duration_sec' => (int)$rr['duration_sec'],
+                'created_at' => $rr['created_at']
+            ];
+        }
+    }
+
+    $analytics['arcade_summary'] = $arcade_summary;
+
     $now = time();
     $snapshotMeta = [
         'is_cached' => false,
