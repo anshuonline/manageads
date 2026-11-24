@@ -4,6 +4,9 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json; charset=UTF-8");
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 
 // Handle Preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
@@ -282,17 +285,35 @@ elseif ($action === 'deletePlaylist') {
         exit;
     }
 
-    $sql = "DELETE FROM user_playlists WHERE playlist_id = '$playlist_id' AND email = '$email'";
+    $deleted = false;
 
-    if ($conn->query($sql) === TRUE) {
-        if ($conn->affected_rows > 0) {
-            echo json_encode(["status" => "success", "message" => "Playlist deleted successfully"]);
-        } else {
-            echo json_encode(["status" => "error", "message" => "Playlist not found or you don't have permission"]);
-        }
-    } else {
-        echo json_encode(["status" => "error", "message" => "Error deleting playlist: " . $conn->error]);
+    // 1. If user is owner, delete from user_playlists and also cleanup saved_playlists references
+    $resOwner = $conn->query("DELETE FROM user_playlists WHERE playlist_id = '$playlist_id' AND email = '$email'");
+    if ($resOwner && $conn->affected_rows > 0) {
+        $deleted = true;
+        $conn->query("DELETE FROM saved_playlists WHERE playlist_id = '$playlist_id'");
     }
+
+    // 2. Also attempt removal from saved_playlists (if it was a saved playlist)
+    $resSaved = $conn->query("DELETE FROM saved_playlists WHERE email = '$email' AND playlist_id = '$playlist_id'");
+    if ($resSaved && $conn->affected_rows > 0) {
+        $deleted = true;
+    }
+
+    // 3. If neither table had rows for this user, check if playlist exists at all
+    if (!$deleted) {
+        $checkExist = $conn->query("SELECT id FROM user_playlists WHERE playlist_id = '$playlist_id'");
+        if (!$checkExist || $checkExist->num_rows == 0) {
+            // Already completely gone from database - return success so client clears its UI
+            echo json_encode(["status" => "success", "message" => "Playlist deleted"]);
+            exit;
+        }
+        // Exists in user_playlists, but owned by someone else and not in saved_playlists
+        echo json_encode(["status" => "error", "message" => "You don't have permission to delete this playlist"]);
+        exit;
+    }
+
+    echo json_encode(["status" => "success", "message" => "Playlist deleted successfully"]);
 }
 elseif ($action === 'getPublicPlaylists') {
     // Optional endpoint for future feature: Get all public playlists
@@ -367,13 +388,8 @@ elseif ($action === 'unsavePlaylist') {
         exit;
     }
 
-    $sql = "DELETE FROM saved_playlists WHERE email = '$email' AND playlist_id = '$playlist_id'";
-
-    if ($conn->query($sql) === TRUE) {
-        echo json_encode(["status" => "success", "message" => "Playlist unsaved successfully"]);
-    } else {
-        echo json_encode(["status" => "error", "message" => "Error unsaving playlist: " . $conn->error]);
-    }
+    $conn->query("DELETE FROM saved_playlists WHERE email = '$email' AND playlist_id = '$playlist_id'");
+    echo json_encode(["status" => "success", "message" => "Playlist unsaved successfully"]);
 }
 elseif ($action === 'incrementPlayCount') {
     // Disabled to eliminate database writes and server traffic
