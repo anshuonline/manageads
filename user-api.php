@@ -36,7 +36,222 @@ if ($col_check_photo && $col_check_photo->num_rows == 0) {
     @$conn->query("ALTER TABLE user_profiles ADD COLUMN photo_url VARCHAR(500) DEFAULT NULL");
 }
 
+// Ensure password_hash, security_question, security_answer_hash columns exist
+$col_check_pw = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'password_hash'");
+if ($col_check_pw && $col_check_pw->num_rows == 0) {
+    @$conn->query("ALTER TABLE user_profiles ADD COLUMN password_hash VARCHAR(64) DEFAULT NULL, ADD COLUMN security_question VARCHAR(255) DEFAULT NULL, ADD COLUMN security_answer_hash VARCHAR(64) DEFAULT NULL");
+}
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
+
+if ($action === 'email_register') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $emailRaw = strtolower(trim($input['email'] ?? ''));
+    $password = (string)($input['password'] ?? '');
+    $name = trim($input['name'] ?? '');
+    $question = trim($input['security_question'] ?? '');
+    $answer = strtolower(trim((string)($input['security_answer'] ?? '')));
+
+    if (!filter_var($emailRaw, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Please enter a valid email address.']);
+        exit;
+    }
+    if (strlen($password) < 6) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Password must be at least 6 characters.']);
+        exit;
+    }
+    if (empty($question) || empty($answer)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Please select a security question and enter an answer.']);
+        exit;
+    }
+
+    $email = $conn->real_escape_string($emailRaw);
+    $pwHash = md5($password);
+    $ansHash = md5($answer);
+    $qEsc = $conn->real_escape_string($question);
+    $nameEsc = $conn->real_escape_string($name ?: explode('@', $emailRaw)[0]);
+
+    $exists = $conn->query("SELECT email, password_hash FROM user_profiles WHERE email = '$email' LIMIT 1");
+    if ($exists && $exists->num_rows > 0) {
+        $row = $exists->fetch_assoc();
+        if (!empty($row['password_hash'])) {
+            http_response_code(409);
+            echo json_encode(['status' => 'error', 'message' => 'An account with this email already exists. Please sign in.']);
+            exit;
+        }
+        $conn->query("UPDATE user_profiles SET password_hash = '$pwHash', security_question = '$qEsc', security_answer_hash = '$ansHash', display_name = IF(display_name = '' OR display_name IS NULL, '$nameEsc', display_name) WHERE email = '$email'");
+    } else {
+        $conn->query("INSERT INTO user_profiles (email, display_name, password_hash, security_question, security_answer_hash, preferred_languages, liked_songs, recent_plays, listening_preferences) VALUES ('$email', '$nameEsc', '$pwHash', '$qEsc', '$ansHash', '[]', '[]', '[]', '{}')");
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'user' => [
+            'email' => $emailRaw,
+            'displayName' => $name ?: explode('@', $emailRaw)[0],
+            'photoURL' => '',
+            'hasPassword' => true,
+            'hasSecurityQuestion' => true
+        ]
+    ]);
+    exit;
+}
+
+if ($action === 'email_login') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $emailRaw = strtolower(trim($input['email'] ?? ''));
+    $password = (string)($input['password'] ?? '');
+
+    if (!filter_var($emailRaw, FILTER_VALIDATE_EMAIL) || empty($password)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Email and password are required.']);
+        exit;
+    }
+
+    $email = $conn->real_escape_string($emailRaw);
+    $res = $conn->query("SELECT email, display_name, photo_url, password_hash, security_question FROM user_profiles WHERE email = '$email' LIMIT 1");
+    if (!$res || $res->num_rows === 0) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'No account found with this email.']);
+        exit;
+    }
+
+    $row = $res->fetch_assoc();
+    if (empty($row['password_hash'])) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'This account uses Google Sign-In. Sign in with Google and set a password in Profile.']);
+        exit;
+    }
+
+    if (md5($password) !== $row['password_hash']) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Incorrect password.']);
+        exit;
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'user' => [
+            'email' => $row['email'],
+            'displayName' => $row['display_name'] ?: explode('@', $emailRaw)[0],
+            'photoURL' => $row['photo_url'] ?: '',
+            'hasPassword' => true,
+            'hasSecurityQuestion' => !empty($row['security_question'])
+        ]
+    ]);
+    exit;
+}
+
+if ($action === 'set_password_security') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $emailRaw = '';
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
+    $authHdr = $headers['Authorization'] ?? ($headers['authorization'] ?? '');
+    if (!empty($authHdr)) {
+        $fbUser = gtRequireFirebaseUser();
+        $emailRaw = strtolower(trim($fbUser['email']));
+    } else {
+        $emailRaw = strtolower(trim($input['email'] ?? ''));
+    }
+
+    if (!filter_var($emailRaw, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Valid email required.']);
+        exit;
+    }
+
+    $email = $conn->real_escape_string($emailRaw);
+    $password = (string)($input['password'] ?? '');
+    $question = trim($input['security_question'] ?? '');
+    $answer = strtolower(trim((string)($input['security_answer'] ?? '')));
+
+    $updates = [];
+    if (!empty($password)) {
+        if (strlen($password) < 6) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Password must be at least 6 characters.']);
+            exit;
+        }
+        $updates[] = "password_hash = '" . md5($password) . "'";
+    }
+    if (!empty($question) && !empty($answer)) {
+        $updates[] = "security_question = '" . $conn->real_escape_string($question) . "'";
+        $updates[] = "security_answer_hash = '" . md5($answer) . "'";
+    }
+
+    if (empty($updates)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Provide a password or security question & answer.']);
+        exit;
+    }
+
+    $exists = $conn->query("SELECT email FROM user_profiles WHERE email = '$email' LIMIT 1");
+    if (!$exists || $exists->num_rows === 0) {
+        $conn->query("INSERT INTO user_profiles (email, preferred_languages, liked_songs, recent_plays, listening_preferences) VALUES ('$email', '[]', '[]', '[]', '{}')");
+    }
+    $conn->query("UPDATE user_profiles SET " . implode(', ', $updates) . " WHERE email = '$email'");
+    echo json_encode(['status' => 'success']);
+    exit;
+}
+
+if ($action === 'get_security_question') {
+    $emailRaw = strtolower(trim($_GET['email'] ?? ''));
+    if (!filter_var($emailRaw, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Enter a valid email address.']);
+        exit;
+    }
+    $email = $conn->real_escape_string($emailRaw);
+    $res = $conn->query("SELECT security_question FROM user_profiles WHERE email = '$email' LIMIT 1");
+    if (!$res || $res->num_rows === 0) {
+        http_response_code(404);
+        echo json_encode(['status' => 'error', 'message' => 'No account found with this email.']);
+        exit;
+    }
+    $row = $res->fetch_assoc();
+    if (empty($row['security_question'])) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'No security question set for this account. Please sign in with Google.']);
+        exit;
+    }
+    echo json_encode(['status' => 'success', 'security_question' => $row['security_question']]);
+    exit;
+}
+
+if ($action === 'reset_password') {
+    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $emailRaw = strtolower(trim($input['email'] ?? ''));
+    $answer = strtolower(trim((string)($input['security_answer'] ?? '')));
+    $newPassword = (string)($input['new_password'] ?? '');
+
+    if (!filter_var($emailRaw, FILTER_VALIDATE_EMAIL) || empty($answer) || strlen($newPassword) < 6) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Valid email, security answer, and password (min 6 chars) required.']);
+        exit;
+    }
+
+    $email = $conn->real_escape_string($emailRaw);
+    $res = $conn->query("SELECT security_answer_hash FROM user_profiles WHERE email = '$email' LIMIT 1");
+    if (!$res || $res->num_rows === 0) {
+        http_response_code(404);
+        echo json_encode(['status' => 'error', 'message' => 'Account not found.']);
+        exit;
+    }
+    $row = $res->fetch_assoc();
+    if (empty($row['security_answer_hash']) || md5($answer) !== $row['security_answer_hash']) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Incorrect security answer.']);
+        exit;
+    }
+
+    $newHash = md5($newPassword);
+    $conn->query("UPDATE user_profiles SET password_hash = '$newHash' WHERE email = '$email'");
+    echo json_encode(['status' => 'success', 'message' => 'Password updated! You can now sign in.']);
+    exit;
+}
 
 if ($action === 'getProfile') {
     $fbUser = gtRequireFirebaseUser();
