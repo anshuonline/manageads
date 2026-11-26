@@ -606,6 +606,38 @@ elseif ($action === 'recordJingleEvent') {
     exit();
 }
 
+elseif ($action === 'recordPcDownload') {
+    $conn->query("CREATE TABLE IF NOT EXISTS gt_pc_downloads (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_identifier VARCHAR(191) NOT NULL,
+        is_guest TINYINT(1) DEFAULT 1,
+        email VARCHAR(191) DEFAULT NULL,
+        os VARCHAR(100) DEFAULT 'Windows',
+        browser VARCHAR(100) DEFAULT 'Unknown',
+        ip_address VARCHAR(64) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_created (created_at),
+        INDEX idx_user (user_identifier)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $userId = trim($input['user_identifier'] ?? $input['guest_id'] ?? $input['email'] ?? '');
+    if (empty($userId)) {
+        $userId = 'guest_' . md5(getClientIP() . ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    }
+    $email = !empty($input['email']) ? $conn->real_escape_string($input['email']) : null;
+    $isGuest = empty($email) ? 1 : 0;
+    $os = $conn->real_escape_string($input['os'] ?? 'Windows');
+    $browser = $conn->real_escape_string($input['browser'] ?? 'Unknown');
+    $ip = $conn->real_escape_string(getClientIP());
+    $userIdClean = $conn->real_escape_string($userId);
+    $emailSql = $email ? "'$email'" : "NULL";
+
+    $conn->query("INSERT INTO gt_pc_downloads (user_identifier, is_guest, email, os, browser, ip_address)
+                  VALUES ('$userIdClean', $isGuest, $emailSql, '$os', '$browser', '$ip')");
+    echo json_encode(['status' => 'success']);
+    exit();
+}
+
 elseif ($action === 'recordAppInterest') {
     $choice = $input['choice'] ?? ($_POST['choice'] ?? '');
     if (!in_array($choice, ['yes', 'not_sure'], true)) {
@@ -1065,6 +1097,17 @@ elseif ($action === 'getAnalytics') {
         }
     }
 
+    $pc_downloads = ['total' => 0, 'unique_users' => 0];
+    $pcCheck = $conn->query("SHOW TABLES LIKE 'gt_pc_downloads'");
+    if ($pcCheck && $pcCheck->num_rows > 0) {
+        $pcRes = $conn->query("SELECT COUNT(*) as total, COUNT(DISTINCT user_identifier) as unique_users FROM gt_pc_downloads");
+        if ($pcRes && $pcRow = $pcRes->fetch_assoc()) {
+            $pc_downloads['total'] = intval($pcRow['total'] ?? 0);
+            $pc_downloads['unique_users'] = intval($pcRow['unique_users'] ?? 0);
+        }
+    }
+    }
+
     $ai_missing_ips = [];
     foreach ($app_interest_stats['recent'] as $r) {
         if (empty($r['city']) && !empty($r['ip_address'])) {
@@ -1087,6 +1130,7 @@ elseif ($action === 'getAnalytics') {
         unset($r);
     }
     $analytics['app_interest'] = $app_interest_stats;
+    $analytics['pc_downloads'] = $pc_downloads;
 
     // Arcade Games Telemetry & Highscores
     $arcade_summary = [
