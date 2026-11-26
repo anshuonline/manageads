@@ -1106,7 +1106,6 @@ elseif ($action === 'getAnalytics') {
             $pc_downloads['unique_users'] = intval($pcRow['unique_users'] ?? 0);
         }
     }
-    }
 
     $ai_missing_ips = [];
     foreach ($app_interest_stats['recent'] as $r) {
