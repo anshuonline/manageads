@@ -25,7 +25,7 @@ function generatePlaylistId() {
 }
 
 if ($action === 'getPlaylists') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $email = $conn->real_escape_string($fbUser['email']);
 
     $sql = "
@@ -188,7 +188,7 @@ elseif ($action === 'getAllPublicPlaylists') {
     ]);
 }
 elseif ($action === 'createPlaylist') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $data = json_decode(file_get_contents("php://input"), true);
     
     $email = $conn->real_escape_string($fbUser['email']);
@@ -218,7 +218,7 @@ elseif ($action === 'createPlaylist') {
     }
 } 
 elseif ($action === 'updatePlaylist') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
@@ -274,7 +274,7 @@ elseif ($action === 'updatePlaylist') {
     }
 } 
 elseif ($action === 'deletePlaylist') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
@@ -343,7 +343,7 @@ elseif ($action === 'getPublicPlaylists') {
     ]);
 }
 elseif ($action === 'savePlaylist') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';
@@ -377,7 +377,7 @@ elseif ($action === 'savePlaylist') {
     }
 }
 elseif ($action === 'unsavePlaylist') {
-    $fbUser = gtRequireFirebaseUser();
+    $fbUser = gtRequireAuthUser($conn);
     $data = json_decode(file_get_contents("php://input"), true);
     
     $playlist_id = isset($data['playlist_id']) ? $conn->real_escape_string($data['playlist_id']) : '';

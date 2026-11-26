@@ -44,55 +44,6 @@ if ($col_check_pw && $col_check_pw->num_rows == 0) {
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-/**
- * Resolve authenticated user: tries Firebase JWT first, then email+password_hash (MD5) fallback.
- * This allows email/password users (who have no Firebase token) to access getProfile/updateProfile.
- */
-function gtResolveAuthUser($conn) {
-    // 1. Try Firebase token (Google Sign-In users)
-    $token = gtGetBearerToken();
-    if ($token) {
-        $fbUser = gtVerifyFirebaseToken($token);
-        if ($fbUser) return $fbUser;
-    }
-
-    // 2. Fallback: email + password_hash from POST body or GET params (email/password users)
-    $input = json_decode(file_get_contents('php://input'), true) ?: [];
-    $emailRaw = strtolower(trim($input['email'] ?? ($_GET['email'] ?? '')));
-    $pwHash = trim($input['password_hash'] ?? ($_GET['password_hash'] ?? ''));
-
-    if (!empty($emailRaw) && !empty($pwHash) && filter_var($emailRaw, FILTER_VALIDATE_EMAIL)) {
-        $email = $conn->real_escape_string($emailRaw);
-        $pwHashEsc = $conn->real_escape_string($pwHash);
-        $res = $conn->query("SELECT email, display_name, photo_url FROM user_profiles WHERE email = '$email' AND password_hash = '$pwHashEsc' LIMIT 1");
-        if ($res && $res->num_rows > 0) {
-            $row = $res->fetch_assoc();
-            return [
-                'uid' => 'email_' . $emailRaw,
-                'email' => $emailRaw,
-                'name' => $row['display_name'] ?? '',
-                'picture' => $row['photo_url'] ?? ''
-            ];
-        }
-    }
-
-    return null;
-}
-
-function gtRequireAuthUser($conn) {
-    $user = gtResolveAuthUser($conn);
-    if (!$user) {
-        http_response_code(401);
-        header('Content-Type: application/json; charset=UTF-8');
-        echo json_encode([
-            'status' => 'error',
-            'message' => 'Unauthorized: valid authentication required',
-        ]);
-        exit;
-    }
-    return $user;
-}
-
 if ($action === 'email_register') {
     $input = json_decode(file_get_contents('php://input'), true) ?: [];
     $emailRaw = strtolower(trim($input['email'] ?? ''));
